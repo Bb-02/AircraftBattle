@@ -4,95 +4,77 @@ import java.awt.*;
 import java.awt.geom.Ellipse2D;
 
 /**
- * 图形绘制工具类（纯代码绘制游戏图形，无外部图片依赖）
- * 修正：Polygon类导入路径错误问题
+ * 图形绘制工具类（修复：调整drawExplosion参数，匹配调用）
  */
 public class DrawUtil {
-
-    /**
-     * 绘制玩家飞机（三角形+矩形）
-     */
+    // 绘制玩家飞机（蓝色矩形+白色描边）
     public static void drawPlayerAircraft(Graphics2D g2d, int x, int y, int width, int height) {
-        // 设置抗锯齿
         g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
-        // 飞机主体（三角形）
-        Polygon body = new Polygon();
-        body.addPoint(x + width/2, y); // 顶部
-        body.addPoint(x, y + height); // 左下
-        body.addPoint(x + width, y + height); // 右下
-
-        // 绘制主体
-        g2d.setColor(Color.CYAN);
-        g2d.fill(body);
+        // 飞机主体
+        g2d.setColor(Color.BLUE);
+        g2d.fillRect(x, y, width, height);
+        // 描边
         g2d.setColor(Color.WHITE);
         g2d.setStroke(new BasicStroke(2));
-        g2d.draw(body);
-
-        // 驾驶舱
-        Ellipse2D cockpit = new Ellipse2D.Double(x + width/4, y + height/4, width/2, height/3);
-        g2d.setColor(Color.WHITE);
-        g2d.fill(cockpit);
+        g2d.drawRect(x, y, width, height);
     }
 
-    /**
-     * 绘制敌机（矩形+三角形）
-     */
+    // 绘制敌机（红色矩形+黑色描边）
     public static void drawEnemyAircraft(Graphics2D g2d, int x, int y, int width, int height) {
         g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
-        // 敌机主体（矩形）
-        Rectangle body = new Rectangle(x, y + height/4, width, height/2);
+        // 敌机主体
         g2d.setColor(Color.RED);
-        g2d.fill(body);
+        g2d.fillRect(x, y, width, height);
+        // 描边
         g2d.setColor(Color.BLACK);
         g2d.setStroke(new BasicStroke(2));
-        g2d.draw(body);
-
-        // 敌机头部（三角形）
-        Polygon head = new Polygon();
-        head.addPoint(x + width/2, y); // 顶部
-        head.addPoint(x, y + height/4); // 左下
-        head.addPoint(x + width, y + height/4); // 右下
-        g2d.setColor(Color.RED);
-        g2d.fill(head);
-        g2d.setColor(Color.BLACK);
-        g2d.draw(head);
+        g2d.drawRect(x, y, width, height);
     }
 
-    /**
-     * 绘制子弹（圆形）
-     */
+    // 绘制玩家子弹（黄色圆形）
     public static void drawBullet(Graphics2D g2d, int x, int y, int size) {
         g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
         Ellipse2D bullet = new Ellipse2D.Double(x, y, size, size);
         g2d.setColor(Color.YELLOW);
         g2d.fill(bullet);
-        g2d.setColor(Color.WHITE);
+        g2d.setColor(Color.ORANGE);
         g2d.setStroke(new BasicStroke(1));
         g2d.draw(bullet);
     }
 
+    // 绘制敌机子弹（红色圆形）
+    public static void drawEnemyBullet(Graphics2D g2d, int x, int y, int size) {
+        g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+        Ellipse2D bullet = new Ellipse2D.Double(x, y, size, size);
+        g2d.setColor(Color.RED);
+        g2d.fill(bullet);
+        g2d.setColor(Color.BLACK);
+        g2d.setStroke(new BasicStroke(1));
+        g2d.draw(bullet);
+    }
+
+    // ========== 核心修复：新增size参数，匹配调用的4个参数 ==========
     /**
-     * 绘制爆炸效果（多个同心圆）
+     * 绘制爆炸效果
+     * @param g2d 绘图上下文
+     * @param x 爆炸中心X坐标
+     * @param y 爆炸中心Y坐标
+     * @param size 爆炸尺寸（适配调用时传入的第四个参数）
      */
     public static void drawExplosion(Graphics2D g2d, int x, int y, int size) {
         g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
-        // 外层大圆（橙色）
-        Ellipse2D outer = new Ellipse2D.Double(x - size/2, y - size/2, size, size);
-        g2d.setColor(new Color(255, 165, 0, 180)); // 半透明橙色
-        g2d.fill(outer);
-
-        // 中层圆（黄色）
-        Ellipse2D middle = new Ellipse2D.Double(x - size/4, y - size/4, size/2, size/2);
-        g2d.setColor(new Color(255, 255, 0, 200)); // 半透明黄色
-        g2d.fill(middle);
-
-        // 内层小圆（红色）
-        Ellipse2D inner = new Ellipse2D.Double(x - size/8, y - size/8, size/4, size/4);
-        g2d.setColor(new Color(255, 0, 0, 220)); // 半透明红色
-        g2d.fill(inner);
+        // 爆炸动画（渐变圆形，尺寸由参数控制）
+        GradientPaint gp = new GradientPaint(
+                x, y, Color.ORANGE,
+                x + size, y + size, Color.RED,
+                true
+        );
+        g2d.setPaint(gp);
+        g2d.fillOval(x - size/2, y - size/2, size, size);
     }
 }

@@ -3,54 +3,63 @@ package com.aircraftwar.entity;
 import com.aircraftwar.util.DrawUtil;
 
 import java.awt.*;
-import java.awt.geom.Ellipse2D;
 
 /**
- * 子弹类（纯代码绘图）
+ * 玩家子弹类（修复：补充完整绘制逻辑，确保子弹可见）
  */
 public class Bullet {
     private int x;
     private int y;
-    private int size = 6; // 子弹尺寸
-    private int speed;
-    private int damage; // 伤害值
-    private boolean alive;
+    private int speed = 8; // 子弹速度（向上）
+    private int size = 6;  // 子弹尺寸（确保可见）
+    private boolean alive = true; // 存活状态
 
-    public Bullet(int x, int y, int speed, int damage) {
-        this.x = x;
-        this.y = y;
-        this.speed = speed;
-        this.damage = damage;
-        this.alive = true;
+    // 构造方法：子弹生成在玩家飞机顶部中间
+    public Bullet(int playerX, int playerY, int playerWidth) {
+        // 修正：子弹X坐标居中，避免偏移出屏幕
+        this.x = playerX + (playerWidth / 2) - (size / 2);
+        this.y = playerY - size; // 子弹在玩家飞机顶部生成
     }
 
-    // 移动
+    // 子弹移动（向上）
     public void move() {
         y -= speed;
-        // 飞出屏幕则失效
-        if (y < -size) {
+        // 飞出屏幕顶部则标记为死亡
+        if (y < 0) {
             alive = false;
         }
     }
 
-    // 绘制
+    // 击中目标后标记为死亡
+    public void hitTarget(Aircraft target) {
+        target.hit(1);
+        alive = false;
+    }
+
+    // 绘制子弹（核心：补充绘制逻辑，黄色圆形子弹）
     public void draw(Graphics g) {
         if (alive) {
             DrawUtil.drawBullet((Graphics2D) g, x, y, size);
         }
     }
 
-    // 获取碰撞矩形
+    // 更新子弹（移动+状态检查）
+    public void update() {
+        if (alive) {
+            move();
+        }
+    }
+
+    // Getter & Setter
+    public boolean isAlive() {
+        return alive;
+    }
+
     public Rectangle getCollisionRect() {
         return new Rectangle(x, y, size, size);
     }
 
-    // 击中目标
-    public void hitTarget(Aircraft aircraft) {
-        aircraft.hit(damage);
-        alive = false;
+    public void setAlive(boolean alive) {
+        this.alive = alive;
     }
-
-    // Getter
-    public boolean isAlive() { return alive; }
 }

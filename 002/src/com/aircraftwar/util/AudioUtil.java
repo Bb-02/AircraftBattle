@@ -1,96 +1,71 @@
 package com.aircraftwar.util;
 
 import javax.sound.sampled.*;
-import java.io.ByteArrayInputStream; // 正确导入ByteArrayInputStream
+import java.io.File;
+import java.io.IOException;
 
 /**
- * 音效工具类（纯代码生成音效，无外部文件依赖）
- * 修正：1. ByteArrayInputStream包路径 2. multi-catch异常继承问题
+ * 音频工具类（补全所有缺失的音频播放方法，处理加载异常）
  */
 public class AudioUtil {
-    // 背景音乐播放器
-    private static Clip bgmClip;
-    // 音频格式
-    private static final AudioFormat AUDIO_FORMAT = new AudioFormat(44100, 16, 1, true, false);
+    // 音频文件路径（可根据实际路径调整，此处为相对路径示例）
+    private static final String SHOOT_SOUND_PATH = "sounds/shoot.wav";
+    private static final String EXPLODE_SOUND_PATH = "sounds/explode.wav";
+    private static final String PLAYER_DEAD_SOUND_PATH = "sounds/player_dead.wav";
+    private static final String GAME_OVER_SOUND_PATH = "sounds/game_over.wav";
+    private static final String BG_MUSIC_PATH = "sounds/bg_music.wav";
+
+    // 背景音乐剪辑（用于循环播放）
+    private static Clip bgMusicClip;
 
     /**
-     * 生成指定频率和时长的正弦波音效
-     * @param frequency 频率（Hz）
-     * @param duration 时长（毫秒）
-     * @param volume 音量（0-1）
-     */
-    private static byte[] generateSineWave(int frequency, int duration, double volume) {
-        int sampleRate = 44100;
-        int samples = sampleRate * duration / 1000;
-        byte[] data = new byte[samples * 2];
-        double period = sampleRate / (double) frequency;
-
-        for (int i = 0; i < samples; i++) {
-            double angle = 2.0 * Math.PI * i / period;
-            short sample = (short) (Math.sin(angle) * volume * Short.MAX_VALUE);
-            data[2 * i] = (byte) (sample & 0xFF);
-            data[2 * i + 1] = (byte) ((sample >> 8) & 0xFF);
-        }
-        return data;
-    }
-
-    /**
-     * 播放射击音效（短音效）
+     * 播放射击音效（玩家发射子弹）
      */
     public static void playShootSound() {
-        playGeneratedSound(880, 100, 0.3); // 高音调，短时长
+        playSound(SHOOT_SOUND_PATH);
     }
 
     /**
-     * 播放爆炸音效
+     * 播放爆炸音效（敌机被击中）
      */
     public static void playExplodeSound() {
-        new Thread(() -> {
-            // 混合多个频率模拟爆炸
-            playGeneratedSound(220, 200, 0.5);
-            try { Thread.sleep(50); } catch (InterruptedException e) {}
-            playGeneratedSound(110, 150, 0.4);
-        }).start();
+        playSound(EXPLODE_SOUND_PATH);
+    }
+
+    /**
+     * 播放玩家死亡音效（核心：补全缺失的方法）
+     */
+    public static void playPlayerDeadSound() {
+        playSound(PLAYER_DEAD_SOUND_PATH);
     }
 
     /**
      * 播放游戏结束音效
      */
     public static void playGameOverSound() {
-        new Thread(() -> {
-            playGeneratedSound(440, 300, 0.3);
-            try { Thread.sleep(150); } catch (InterruptedException e) {}
-            playGeneratedSound(220, 400, 0.3);
-            try { Thread.sleep(200); } catch (InterruptedException e) {}
-            playGeneratedSound(110, 500, 0.3);
-        }).start();
+        playSound(GAME_OVER_SOUND_PATH);
     }
 
     /**
-     * 播放背景音乐（循环的低频正弦波）
+     * 播放背景音乐（循环）
      */
     public static void playBGM() {
-        stopBGM();
-        try {
-            // 生成循环的背景音乐数据（低频+渐变）
-            byte[] bgmData = generateSineWave(110, 2000, 0.1); // 2秒的低频音效
-            AudioInputStream audioStream = new AudioInputStream(
-                    new ByteArrayInputStream(bgmData),
-                    AUDIO_FORMAT,
-                    bgmData.length / 2
-            );
+        // 停止已有背景音乐
+        if (bgMusicClip != null && bgMusicClip.isRunning()) {
+            bgMusicClip.stop();
+        }
 
-            DataLine.Info info = new DataLine.Info(Clip.class, AUDIO_FORMAT);
-            bgmClip = (Clip) AudioSystem.getLine(info);
-            bgmClip.open(audioStream);
-            bgmClip.loop(Clip.LOOP_CONTINUOUSLY); // 循环播放
-            bgmClip.start();
-        } catch (LineUnavailableException e) {
-            // 先捕获具体的音频异常
-            System.err.println("音频线路不可用：" + e.getMessage());
-        } catch (Exception e) {
-            // 再捕获其他通用异常
-            System.err.println("背景音乐播放失败：" + e.getMessage());
+        try {
+            AudioInputStream audioInputStream = AudioSystem.getAudioInputStream(new File(BG_MUSIC_PATH));
+            bgMusicClip = AudioSystem.getClip();
+            bgMusicClip.open(audioInputStream);
+            // 设置循环播放（无限循环）
+            bgMusicClip.loop(Clip.LOOP_CONTINUOUSLY);
+            bgMusicClip.start();
+        } catch (UnsupportedAudioFileException | IOException | LineUnavailableException e) {
+            // 音频文件不存在/加载失败时，打印提示但不影响游戏运行
+            System.out.println("背景音乐加载失败：" + e.getMessage());
+            // 降级处理：不播放背景音乐，避免游戏崩溃
         }
     }
 
@@ -98,42 +73,45 @@ public class AudioUtil {
      * 停止背景音乐
      */
     public static void stopBGM() {
-        if (bgmClip != null && bgmClip.isRunning()) {
-            bgmClip.stop();
-            bgmClip.close();
+        if (bgMusicClip != null && bgMusicClip.isRunning()) {
+            bgMusicClip.stop();
+            bgMusicClip.close();
         }
     }
 
     /**
-     * 播放生成的音效
+     * 通用音频播放方法（处理异常，保证游戏不崩溃）
      */
-    private static void playGeneratedSound(int frequency, int duration, double volume) {
-        try {
-            byte[] soundData = generateSineWave(frequency, duration, volume);
-            AudioInputStream audioStream = new AudioInputStream(
-                    new ByteArrayInputStream(soundData),
-                    AUDIO_FORMAT,
-                    soundData.length / 2
-            );
-
-            DataLine.Info info = new DataLine.Info(Clip.class, AUDIO_FORMAT);
-            Clip clip = (Clip) AudioSystem.getLine(info);
-            clip.open(audioStream);
-            clip.start();
-
-            // 播放完毕后释放资源
-            clip.addLineListener(event -> {
-                if (event.getType() == LineEvent.Type.STOP) {
-                    clip.close();
-                    try { audioStream.close(); } catch (Exception e) {}
+    private static void playSound(String filePath) {
+        new Thread(() -> { // 新开线程播放，避免阻塞游戏主线程
+            try {
+                File soundFile = new File(filePath);
+                // 检查文件是否存在
+                if (!soundFile.exists()) {
+                    System.out.println("音频文件不存在：" + filePath);
+                    return;
                 }
-            });
-        } catch (LineUnavailableException e) {
-            // 先捕获具体的音频异常
-            System.err.println("音频线路不可用：" + e.getMessage());
-        } catch (Exception e) {
-            // 再捕获其他通用异常
-            System.err.println("音效播放失败：" + e.getMessage());
-        }
+
+                AudioInputStream audioInputStream = AudioSystem.getAudioInputStream(soundFile);
+                Clip clip = AudioSystem.getClip();
+                clip.open(audioInputStream);
+                clip.start();
+
+                // 播放完毕后关闭资源
+                clip.addLineListener(event -> {
+                    if (event.getType() == LineEvent.Type.STOP) {
+                        clip.close();
+                        try {
+                            audioInputStream.close();
+                        } catch (IOException e) {
+                            e.printStackTrace();
+                        }
+                    }
+                });
+            } catch (UnsupportedAudioFileException | IOException | LineUnavailableException e) {
+                // 音频播放失败时，仅打印日志，不影响游戏核心逻辑
+                System.out.println("音频播放失败：" + filePath + "，原因：" + e.getMessage());
+            }
+        }).start();
     }
 }

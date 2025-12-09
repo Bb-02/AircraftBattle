@@ -1,11 +1,8 @@
 package com.aircraftwar.ui;
 
-import com.aircraftwar.entity.Aircraft;
-import com.aircraftwar.entity.EnemyAircraft;
-import com.aircraftwar.entity.Explosion;
-import com.aircraftwar.entity.PlayerAircraft;
+import com.aircraftwar.entity.*;
 import com.aircraftwar.util.AudioUtil;
-import com.aircraftwar.util.ScoreRecord;
+import com.aircraftwar.entity.ScoreRecord;
 import com.aircraftwar.util.ScoreUtil;
 
 import javax.swing.*;
@@ -18,7 +15,7 @@ import java.util.List;
 import java.util.Random;
 
 /**
- * 游戏主面板（集成昵称输入+昵称+分数排行榜）
+ * 游戏主面板（集成雷霆战机风格小队化+无尽逻辑）
  */
 public class GamePanel extends JPanel implements Runnable {
     // 游戏状态
@@ -30,13 +27,12 @@ public class GamePanel extends JPanel implements Runnable {
 
     // 游戏元素
     private PlayerAircraft player;
-    private List<EnemyAircraft> enemies;
+    private Wave currentWave;          // 当前波次（无尽递增）
+    private int currentWaveNumber = 1; // 当前波次编号
     private List<Explosion> explosions;
 
     // 游戏参数
     private int score = 0;
-    private int enemySpawnInterval = 1000; // 敌机生成间隔（毫秒）
-    private long lastEnemySpawnTime;
     private Random random = new Random();
 
     // 键盘控制
@@ -51,10 +47,24 @@ public class GamePanel extends JPanel implements Runnable {
     private boolean isRunning;
     private static final int FPS = 60; // 帧率
 
+    // 初始化支持中文的字体（全局复用）
+    private Font chineseFont;
+    private Font chineseBoldFont;
+
     public GamePanel() {
         // 初始化面板
         setPreferredSize(new Dimension(800, 600));
         setBackground(Color.BLACK);
+
+        // ========== 核心修复1：初始化支持中文的字体 ==========
+        // 优先使用微软雅黑， fallback到宋体，确保中文显示
+        chineseFont = new Font("微软雅黑", Font.PLAIN, 20);
+        chineseBoldFont = new Font("微软雅黑", Font.BOLD, 25);
+        // 兼容Linux/Mac系统（替换为系统自带的中文字体）
+        if (chineseFont.getFamily().contains("Dialog")) {
+            chineseFont = new Font("SimSun", Font.PLAIN, 20);
+            chineseBoldFont = new Font("SimSun", Font.BOLD, 25);
+        }
 
         // 初始化游戏元素
         initGame();
@@ -62,6 +72,7 @@ public class GamePanel extends JPanel implements Runnable {
         // 添加键盘监听
         addKeyListener(new GameKeyListener());
         setFocusable(true);
+        requestFocus();
 
         // 启动游戏线程
         startGameThread();
@@ -72,17 +83,38 @@ public class GamePanel extends JPanel implements Runnable {
         // 创建玩家飞机（居中底部）
         player = new PlayerAircraft(400 - 20, 500);
 
-        // 初始化集合
-        enemies = new ArrayList<>();
+        // 初始化爆炸列表
         explosions = new ArrayList<>();
 
         // 重置游戏状态
         score = 0;
         gameState = GAME_RUNNING;
-        lastEnemySpawnTime = System.currentTimeMillis();
+        currentWaveNumber = 1;
+        // 初始化第一波（无尽型）
+        startNewWave();
 
         // 播放背景音乐
         AudioUtil.playBGM();
+    }
+
+    // 启动新波次（无尽型，无限递增）
+    private void startNewWave() {
+        currentWave = new Wave(currentWaveNumber);
+        // 打印波次信息（控制台）
+        System.out.println("===== 无尽模式 - 第" + currentWaveNumber + "波 =====");
+        System.out.println("小队数量：" + currentWave.getSquads().size());
+        for (EnemySquad squad : currentWave.getSquads()) {
+            System.out.println("小队" + squad.getSquadId() + "：编队=" + squad.getFormation() + "，运动=" + squad.getMoveType());
+        }
+    }
+
+    // 检查波次切换（无尽型，波次无限递增）
+    private void checkWaveSwitch() {
+        if (currentWave.isWaveOver()) {
+            // 波次结束，启动下一波（无尽递增）
+            currentWaveNumber++;
+            startNewWave();
+        }
     }
 
     // 启动游戏线程
@@ -126,11 +158,8 @@ public class GamePanel extends JPanel implements Runnable {
         // 控制玩家移动
         controlPlayerMovement();
 
-        // 生成敌机
-        spawnEnemies();
-
-        // 更新敌机
-        updateEnemies();
+        // 更新当前波次（小队移动+子弹）
+        currentWave.updateWave();
 
         // 更新玩家子弹
         if (shootPressed) {
@@ -144,6 +173,9 @@ public class GamePanel extends JPanel implements Runnable {
         // 更新爆炸效果
         updateExplosions();
 
+        // 检查波次切换（无尽型）
+        checkWaveSwitch();
+
         // 检查游戏结束
         checkGameOver();
     }
@@ -154,39 +186,6 @@ public class GamePanel extends JPanel implements Runnable {
         if (downPressed) player.moveDown(getHeight());
         if (leftPressed) player.moveLeft();
         if (rightPressed) player.moveRight(getWidth());
-    }
-
-    // 生成敌机
-    private void spawnEnemies() {
-        long currentTime = System.currentTimeMillis();
-        if (currentTime - lastEnemySpawnTime >= enemySpawnInterval) {
-            enemies.add(new EnemyAircraft(getWidth(), getHeight()));
-            lastEnemySpawnTime = currentTime;
-
-            // 逐渐提高难度
-            if (enemySpawnInterval > 300) {
-                enemySpawnInterval -= 10;
-            }
-        }
-    }
-
-    // 更新敌机
-    private void updateEnemies() {
-        Iterator<EnemyAircraft> iterator = enemies.iterator();
-        while (iterator.hasNext()) {
-            EnemyAircraft enemy = iterator.next();
-            enemy.move();
-
-            // 移除飞出屏幕或已死亡的敌机
-            if (enemy.isOutOfScreen(getHeight()) || !enemy.isAlive()) {
-                if (!enemy.isAlive()) {
-                    // 添加爆炸效果
-                    explosions.add(new Explosion(enemy.getX(), enemy.getY()));
-                    score += 10; // 加分
-                }
-                iterator.remove();
-            }
-        }
     }
 
     // 更新爆炸效果
@@ -200,29 +199,51 @@ public class GamePanel extends JPanel implements Runnable {
         }
     }
 
-    // 碰撞检测
+    // 碰撞检测（适配小队敌机）
     private void checkCollisions() {
-        // 子弹击中敌机
-        for (EnemyAircraft enemy : enemies) {
+        List<EnemyAircraft> allEnemies = currentWave.getAllEnemies();
+
+        // 1. 玩家子弹击中敌机
+        for (EnemyAircraft enemy : allEnemies) {
             if (!enemy.isAlive()) continue;
 
-            Iterator<com.aircraftwar.entity.Bullet> bulletIterator = player.getBullets().iterator();
+            Iterator<Bullet> bulletIterator = player.getBullets().iterator();
             while (bulletIterator.hasNext()) {
-                com.aircraftwar.entity.Bullet bullet = bulletIterator.next();
-                if (bullet.isAlive() &&
-                        bullet.getCollisionRect().intersects(enemy.getCollisionRect())) {
+                Bullet bullet = bulletIterator.next();
+                if (bullet.isAlive() && bullet.getCollisionRect().intersects(enemy.getCollisionRect())) {
                     bullet.hitTarget(enemy);
                     bulletIterator.remove();
+                    // 添加爆炸效果
+                    explosions.add(new Explosion(enemy.getX(), enemy.getY()));
+                    score += 10 * currentWaveNumber; // 波次越高，得分越高（无尽难度奖励）
                     break;
                 }
             }
         }
 
-        // 敌机碰撞玩家
-        for (EnemyAircraft enemy : enemies) {
-            if (enemy.isAlive() &&
-                    enemy.getCollisionRect().intersects(player.getCollisionRect())) {
-                player.hit(1);
+        // 2. 敌机子弹击中玩家
+        for (EnemyAircraft enemy : allEnemies) {
+            if (!enemy.isAlive()) continue;
+
+            Iterator<EnemyBullet> enemyBulletIterator = enemy.getBullets().iterator();
+            while (enemyBulletIterator.hasNext()) {
+                EnemyBullet eBullet = enemyBulletIterator.next();
+                if (eBullet.isAlive() && eBullet.getCollisionRect().intersects(player.getCollisionRect())) {
+                    // 玩家扣血（波次越高，扣血越多）
+                    player.hit(currentWaveNumber / 2 + 1);
+                    eBullet.setAlive(false);
+                    enemyBulletIterator.remove();
+                    // 添加爆炸效果
+                    explosions.add(new Explosion(player.getX(), player.getY()));
+                    break;
+                }
+            }
+        }
+
+        // 3. 敌机碰撞玩家
+        for (EnemyAircraft enemy : allEnemies) {
+            if (enemy.isAlive() && enemy.getCollisionRect().intersects(player.getCollisionRect())) {
+                player.hit(2); // 碰撞扣2血
                 enemy.hit(1);
                 explosions.add(new Explosion(player.getX(), player.getY()));
                 break;
@@ -230,45 +251,51 @@ public class GamePanel extends JPanel implements Runnable {
         }
     }
 
-    // 检查游戏结束（新增昵称输入逻辑）
+    // 检查游戏结束
+    // GamePanel.java 中 checkGameOver() 方法的修改
+    // ========== 额外优化：确保JOptionPane输入框支持中文输入 ==========
     private void checkGameOver() {
         if (!player.isAlive() && gameState != GAME_OVER) {
             gameState = GAME_OVER;
             AudioUtil.stopBGM();
             AudioUtil.playGameOverSound();
 
-            // 在Swing事件线程中弹出昵称输入框（避免线程问题）
             SwingUtilities.invokeLater(() -> {
-                // 弹出输入对话框，提示玩家输入昵称
+                // 中文提示文本，确保输入框支持中文
+                String inputMsg = "游戏结束！\n你的得分: " + score + "\n到达波次: " + currentWaveNumber + "\n请输入你的昵称:";
                 String nickname = JOptionPane.showInputDialog(
                         this,
-                        "Game Over!\nYour Score: " + score + "\nPlease enter your nickname:",
-                        "Enter Nickname",
+                        inputMsg,
+                        "输入昵称",
                         JOptionPane.PLAIN_MESSAGE
                 );
-                // 保存昵称+分数到排行榜
+                // 保存得分（中文昵称正常存储）
                 ScoreUtil.saveScore(nickname, score);
-                // 重绘界面（显示带昵称的排行榜）
                 repaint();
             });
         }
     }
 
-    // 绘制游戏界面（优化：显示昵称+分数排行榜）
+    // 绘制游戏界面（新增小队/波次信息）
     @Override
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);
+        Graphics2D g2d = (Graphics2D) g;
+        // 开启文字抗锯齿，避免中文显示模糊
+        g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
 
         if (gameState == GAME_RUNNING) {
             // 绘制玩家
             player.draw(g);
 
-            // 绘制玩家子弹
-            player.drawBullets(g);
-
-            // 绘制敌机
-            for (EnemyAircraft enemy : enemies) {
-                enemy.draw(g);
+            // 绘制当前波所有小队的敌机
+            List<EnemySquad> squads = currentWave.getSquads();
+            for (EnemySquad squad : squads) {
+                if (squad.isSpawned()) {
+                    for (EnemyAircraft enemy : squad.getEnemies()) {
+                        enemy.draw(g);
+                    }
+                }
             }
 
             // 绘制爆炸效果
@@ -276,49 +303,67 @@ public class GamePanel extends JPanel implements Runnable {
                 explosion.draw(g);
             }
 
-            // 绘制分数
+            // 绘制游戏信息（雷霆战机风格UI）
             g.setColor(Color.WHITE);
             g.setFont(new Font("Arial", Font.BOLD, 20));
-            g.drawString("Score: " + score, 20, 30);
-            // 绘制历史最高分
+            // 分数（波次越高，得分倍率越高）
+            g.drawString("Score: " + score + " (x" + currentWaveNumber + ")", 20, 30);
+            // 历史最高分
             g.drawString("Highest: " + ScoreUtil.getHighestScore(), 20, 60);
-
-            // 绘制生命值
+            // 当前波次
+            g.drawString("Wave: " + currentWaveNumber, 20, 90);
+            // 剩余小队数
+            long aliveSquads = squads.stream().filter(s -> s.isSpawned() && !s.isAllDead()).count();
+            g.drawString("Squads Left: " + aliveSquads + "/" + squads.size(), 20, 120);
+            // 波次剩余时间
+            long elapsedTime = System.currentTimeMillis() - currentWave.getStartTime();
+            long remainingTime = (currentWave.getDuration() - elapsedTime) / 1000;
+            if (remainingTime < 0) remainingTime = 0;
+            g.drawString("Wave Time Left: " + remainingTime + "s", 20, 150);
+            // 玩家生命值
             g.drawString("HP: " + player.getHp(), getWidth() - 80, 30);
+
         } else if (gameState == GAME_OVER) {
-            // 绘制游戏结束界面
-            g.setColor(Color.RED);
-            g.setFont(new Font("Arial", Font.BOLD, 50));
-            g.drawString("GAME OVER", getWidth()/2 - 150, getHeight()/2 - 180);
+            // 绘制游戏结束标题
+            g2d.setColor(Color.RED);
+            g2d.setFont(new Font("微软雅黑", Font.BOLD, 50));
+            g2d.drawString("GAME OVER", getWidth()/2 - 150, getHeight()/2 - 180);
 
-            // 绘制当前分数和历史最高分
-            g.setColor(Color.WHITE);
-            g.setFont(new Font("Arial", Font.BOLD, 30));
-            g.drawString("Final Score: " + score, getWidth()/2 - 100, getHeight()/2 - 100);
-            g.drawString("Highest Score: " + ScoreUtil.getHighestScore(), getWidth()/2 - 120, getHeight()/2 - 50);
+            // 绘制得分/波次信息（支持中文）
+            g2d.setColor(Color.WHITE);
+            g2d.setFont(new Font("微软雅黑", Font.BOLD, 30));
+            g2d.drawString("最终得分: " + score, getWidth()/2 - 100, getHeight()/2 - 100);
+            g2d.drawString("到达波次: " + currentWaveNumber, getWidth()/2 - 120, getHeight()/2 - 50);
+            g2d.drawString("历史最高分: " + ScoreUtil.getHighestScore(), getWidth()/2 - 120, getHeight()/2);
 
-            // 绘制排行榜标题
-            g.setFont(new Font("Arial", Font.BOLD, 25));
-            g.drawString("Top 10 Players", getWidth()/2 - 80, getHeight()/2);
+            // 绘制排行榜标题（中文）
+            g2d.setFont(chineseBoldFont);
+            g2d.drawString("排行榜 Top 5", getWidth()/2 - 80, getHeight()/2 + 50);
 
-            // 绘制排行榜列表（昵称 + 分数）
-            g.setFont(new Font("Arial", Font.PLAIN, 20));
-            List<ScoreRecord> topRecords = ScoreUtil.getScoreRecordList();
+            // ========== 核心修复2：正确计算中文文本宽度，避免偏移 ==========
+            g2d.setFont(chineseFont);
+            List<ScoreRecord> topRecords = ScoreUtil.getTopScores();
             int yOffset = 0;
-            for (int i = 0; i < topRecords.size(); i++) {
+            for (int i = 0; i < Math.min(topRecords.size(), 5); i++) {
                 yOffset += 30;
                 ScoreRecord record = topRecords.get(i);
-                // 格式化显示：排名. 昵称 - 分数
-                String rankText = String.format("%d. %s - %d",
-                        i+1, record.getNickname(), record.getScore());
-                // 居中对齐（调整x坐标适配不同长度的昵称）
-                int textX = getWidth()/2 - (rankText.length() * 5);
-                g.drawString(rankText, textX, getHeight()/2 + yOffset);
+                // 拼接排行榜文本（支持中文昵称）
+                String rankText = String.format("%d. %s - %d", i+1, record.getNickname(), record.getScore());
+
+                // 计算文本宽度（兼容中文），居中显示
+                FontMetrics fm = g2d.getFontMetrics();
+                int textWidth = fm.stringWidth(rankText);
+                int textX = (getWidth() - textWidth) / 2; // 真正居中，适配中文宽度
+
+                g2d.drawString(rankText, textX, getHeight()/2 + 50 + yOffset);
             }
 
-            // 绘制重启提示
-            g.setFont(new Font("Arial", Font.PLAIN, 20));
-            g.drawString("Press R to Restart", getWidth()/2 - 80, getHeight()/2 + yOffset + 50);
+            // 绘制重启提示（中文）
+            g2d.setFont(chineseFont);
+            String restartText = "按 R 键重新开始";
+            int restartWidth = g2d.getFontMetrics().stringWidth(restartText);
+            int restartX = (getWidth() - restartWidth) / 2;
+            g2d.drawString(restartText, restartX, getHeight()/2 + 50 + yOffset + 30);
         }
     }
 
