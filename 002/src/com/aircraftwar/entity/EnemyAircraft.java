@@ -1,6 +1,9 @@
 package com.aircraftwar.entity;
 
 import com.aircraftwar.util.DrawUtil;
+// ========== 新增：导入图片工具类和图片类型 ==========
+import com.aircraftwar.util.ImageUtil;
+import java.awt.image.BufferedImage;
 
 import java.awt.*;
 import java.util.ArrayList;
@@ -8,48 +11,59 @@ import java.util.List;
 import java.util.Random;
 
 /**
- * 敌机类（适配小队初始位置 + 修复waveNumber未定义问题）
+ * 敌机类（适配小队初始位置 + 修复waveNumber未定义问题 + 替换为图片绘制）
  */
 public class EnemyAircraft extends Aircraft {
     private static final Random random = new Random();
-    // 敌机尺寸
+    // 敌机尺寸（保持原有尺寸，适配图片）
     private static final int ENEMY_WIDTH = 30;
     private static final int ENEMY_HEIGHT = 40;
 
-    // ========== 新增：定义waveNumber成员变量 ==========
-    private int waveNumber;                // 所属波次（关键修复）
+    // ========== 新增：敌机图片对象 ==========
+    private BufferedImage enemyImage;
+
+    // 所属波次（关键修复）
+    private int waveNumber;
 
     // 子弹相关
-    private List<EnemyBullet> bullets;       // 敌机子弹列表
-    private long lastShootTime;              // 上次发射时间
-    private long shootInterval;              // 发射间隔（波次越高，间隔越短）
+    private List<EnemyBullet> bullets;
+    private long lastShootTime;
+    private long shootInterval;
 
     // 移动相关
-    private EnemyMoveType moveType;          // 移动类型
-    private int moveSpeed;                   // 移动速度（波次越高越快）
+    private EnemyMoveType moveType;
+    private int moveSpeed;
 
     // 逃跑相关
-    private boolean isEscaping;              // 是否逃跑
-    private int escapeSpeed = 10;            // 逃跑速度（快速向上）
+    private boolean isEscaping;
+    private int escapeSpeed = 10;
 
-    // 构造方法支持传入初始位置（核心：初始化waveNumber）
+    // 构造方法支持传入初始位置（核心：初始化waveNumber + 加载图片）
     public EnemyAircraft(int panelWidth, int panelHeight, EnemyMoveType moveType, int waveNumber, int initX, int initY) {
-        super(initX, initY, 2 + waveNumber, 1, ENEMY_WIDTH, ENEMY_HEIGHT); // 初始位置由小队指定
+        super(initX, initY, 2 + waveNumber, 1, ENEMY_WIDTH, ENEMY_HEIGHT);
 
-        // ========== 关键修复：初始化waveNumber成员变量 ==========
         this.waveNumber = waveNumber;
 
-        // 子弹初始化
+        // 加载敌机图片 + 日志
+        System.out.println("[EnemyAircraft] 开始加载 Enemy1.png");
+        this.enemyImage = ImageUtil.loadImage("Enemy1.png");
+        if (this.enemyImage == null) {
+            System.out.println("[EnemyAircraft] ❌ Enemy1.png 加载失败！");
+        } else {
+            System.out.println("[EnemyAircraft] ✅ Enemy1.png 加载成功！");
+        }
+
+        // 子弹初始化（原有逻辑）
         this.bullets = new ArrayList<>();
-        this.shootInterval = 3000 - (waveNumber * 200); // 波次越高，发射越快（最低800ms）
+        this.shootInterval = 3000 - (waveNumber * 200);
         if (shootInterval < 800) {
             shootInterval = 800;
         }
         this.lastShootTime = System.currentTimeMillis();
 
-        // 移动初始化
+        // 移动初始化（原有逻辑）
         this.moveType = moveType;
-        this.moveSpeed = 2 + (waveNumber / 2); // 波次越高，移动越快
+        this.moveSpeed = 2 + (waveNumber / 2);
         this.isEscaping = false;
     }
 
@@ -60,7 +74,7 @@ public class EnemyAircraft extends Aircraft {
                 random.nextInt(Math.max(1, 150)) + 20);
     }
 
-    // 敌机移动逻辑（移除原位置更新，改为小队控制，仅保留射击和逃跑）
+    // 敌机移动逻辑（原有逻辑完全保留）
     @Override
     public void move() {
         // 逃跑优先：快速向上移出屏幕
@@ -76,11 +90,10 @@ public class EnemyAircraft extends Aircraft {
         shootBullet();
     }
 
-    // 敌机发射子弹（波次越高，射击概率越高）
+    // 敌机发射子弹（原有逻辑完全保留）
     private void shootBullet() {
         long currentTime = System.currentTimeMillis();
-        // ========== 此处waveNumber已定义，不再报错 ==========
-        double shootProb = Math.min(0.1 * this.waveNumber, 0.8); // 波次越高，射击概率越高（最高80%）
+        double shootProb = Math.min(0.1 * this.waveNumber, 0.8);
         if (currentTime - lastShootTime >= shootInterval && random.nextDouble() < shootProb) {
             // 子弹位置：敌机底部中间
             bullets.add(new EnemyBullet(x + width/2 - 3, y + height));
@@ -88,7 +101,7 @@ public class EnemyAircraft extends Aircraft {
         }
     }
 
-    // 更新敌机子弹
+    // 更新敌机子弹（原有逻辑完全保留）
     public void updateBullets() {
         // 移除失效子弹
         bullets.removeIf(bullet -> !bullet.isAlive());
@@ -98,12 +111,16 @@ public class EnemyAircraft extends Aircraft {
         }
     }
 
-    // 绘制敌机+子弹
+    // 绘制敌机+子弹（核心修改：替换为图片绘制）
     @Override
     public void draw(Graphics g) {
         if (isAlive()) {
-            DrawUtil.drawEnemyAircraft((Graphics2D) g, x, y, width, height);
-            // 绘制子弹
+            // ========== 核心修改：删除DrawUtil绘制，改为图片绘制 ==========
+            // 原代码：DrawUtil.drawEnemyAircraft((Graphics2D) g, x, y, width, height);
+            Graphics2D g2d = (Graphics2D) g;
+            ImageUtil.drawImage(g2d, enemyImage, x, y, ENEMY_WIDTH, ENEMY_HEIGHT);
+
+            // 子弹绘制逻辑完全保留
             for (EnemyBullet bullet : bullets) {
                 bullet.draw(g);
             }
@@ -112,16 +129,15 @@ public class EnemyAircraft extends Aircraft {
 
     @Override
     public void die() {
-        // 播放爆炸音效
+        // 播放爆炸音效（原有逻辑保留）
         com.aircraftwar.util.AudioUtil.playExplodeSound();
     }
 
-    // Getter & Setter
+    // Getter & Setter（原有逻辑完全保留）
     public List<EnemyBullet> getBullets() { return bullets; }
     public boolean isEscaping() { return isEscaping; }
     public void setEscaping(boolean escaping) { isEscaping = escaping; }
-    public void setX(int x) { this.x = x; } // 新增：支持小队修改X坐标
-    public void setY(int y) { this.y = y; } // 新增：支持小队修改Y坐标
-    // 新增：waveNumber的Getter（可选，便于扩展）
+    public void setX(int x) { this.x = x; }
+    public void setY(int y) { this.y = y; }
     public int getWaveNumber() { return waveNumber; }
 }

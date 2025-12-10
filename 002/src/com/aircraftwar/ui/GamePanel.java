@@ -9,11 +9,16 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Random;
 
+
+import javax.swing.event.DocumentListener;
+import javax.swing.event.DocumentEvent;
 /**
  * 游戏主面板（集成雷霆战机风格小队化+无尽逻辑）
  */
@@ -261,15 +266,146 @@ public class GamePanel extends JPanel implements Runnable {
             AudioUtil.playGameOverSound();
 
             SwingUtilities.invokeLater(() -> {
-                // 中文提示文本，确保输入框支持中文
-                String inputMsg = "游戏结束！\n你的得分: " + score + "\n到达波次: " + currentWaveNumber + "\n请输入你的昵称:";
-                String nickname = JOptionPane.showInputDialog(
-                        this,
-                        inputMsg,
-                        "输入昵称",
-                        JOptionPane.PLAIN_MESSAGE
-                );
-                // 保存得分（中文昵称正常存储）
+                // 1. 初始化对话框
+                JDialog inputDialog = new JDialog((Frame) SwingUtilities.getWindowAncestor(this), "输入昵称", true);
+                inputDialog.setSize(650, 315); // 加宽高度，确保所有组件有足够空间
+                inputDialog.setLocationRelativeTo(this);
+                inputDialog.setLayout(new BorderLayout(10, 15)); // 上下间距
+                inputDialog.getContentPane().setBackground(Color.WHITE);
+                inputDialog.setResizable(false);
+
+
+                // 2. 提示文本区域（垂直排列，确保每行独立）
+                JPanel tipPanel = new JPanel();
+                tipPanel.setLayout(new BoxLayout(tipPanel, BoxLayout.Y_AXIS));
+                tipPanel.setBackground(Color.WHITE);
+                tipPanel.setBorder(BorderFactory.createEmptyBorder(15, 10, 5, 10)); // 内边距
+
+                // 2.1 游戏结束提示（加粗、红色）
+                JLabel gameOverLabel = new JLabel("游戏结束！");
+                gameOverLabel.setFont(new Font("微软雅黑", Font.BOLD, 24));
+                gameOverLabel.setForeground(Color.RED);
+                gameOverLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+                tipPanel.add(gameOverLabel);
+
+                // 2.2 得分提示
+                JLabel scoreLabel = new JLabel("你的得分：" + score);
+                scoreLabel.setFont(chineseFont);
+                scoreLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+                tipPanel.add(Box.createVerticalStrut(8));
+                tipPanel.add(scoreLabel);
+
+                // 2.3 波次提示
+                JLabel waveLabel = new JLabel("到达波次：" + currentWaveNumber);
+                waveLabel.setFont(chineseFont);
+                waveLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+                tipPanel.add(Box.createVerticalStrut(8));
+                tipPanel.add(waveLabel);
+
+                // 2.4 输入提示
+                JLabel inputTipLabel = new JLabel("请输入昵称（最多8个中文/16个英文）：");
+                inputTipLabel.setFont(chineseFont);
+                inputTipLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+                tipPanel.add(Box.createVerticalStrut(12));
+                tipPanel.add(inputTipLabel);
+
+                inputDialog.add(tipPanel, BorderLayout.NORTH);
+
+
+                // 3. 输入框+计数标签区域（水平排列，确保都显示）
+                JPanel inputAreaPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 0)); // 水平居中排列
+                inputAreaPanel.setBackground(Color.WHITE);
+                inputAreaPanel.setBorder(BorderFactory.createEmptyBorder(0, 10, 10, 10));
+
+                // 3.1 输入框（设置最小宽度，避免被挤压）
+                JTextField nicknameField = new JTextField();
+                nicknameField.setFont(chineseFont);
+                nicknameField.setPreferredSize(new Dimension(250, 30)); // 固定宽度高度
+                nicknameField.setBorder(BorderFactory.createLineBorder(Color.GRAY));
+
+                // 3.2 计数标签
+                JLabel countLabel = new JLabel("剩余可输入：16 字符");
+                countLabel.setFont(chineseFont);
+                countLabel.setForeground(Color.GRAY);
+
+                inputAreaPanel.add(nicknameField);
+                inputAreaPanel.add(countLabel);
+                inputDialog.add(inputAreaPanel, BorderLayout.CENTER);
+
+
+                // 4. 字符长度监听（逻辑不变）
+                nicknameField.getDocument().addDocumentListener(new DocumentListener() {
+                    private int calculateCharLength(String text) {
+                        int length = 0;
+                        for (char c : text.toCharArray()) {
+                            length += (c >= 0x4E00 && c <= 0x9FA5) ? 2 : 1;
+                        }
+                        return length;
+                    }
+
+                    private String truncateText(String text) {
+                        StringBuilder sb = new StringBuilder();
+                        int currentLength = 0;
+                        for (char c : text.toCharArray()) {
+                            int charLen = (c >= 0x4E00 && c <= 0x9FA5) ? 2 : 1;
+                            if (currentLength + charLen > 16) break;
+                            sb.append(c);
+                            currentLength += charLen;
+                        }
+                        return sb.toString();
+                    }
+
+                    @Override
+                    public void insertUpdate(DocumentEvent e) { updateCount(); }
+                    @Override
+                    public void removeUpdate(DocumentEvent e) { updateCount(); }
+                    @Override
+                    public void changedUpdate(DocumentEvent e) { updateCount(); }
+
+                    private void updateCount() {
+                        String text = nicknameField.getText();
+                        if (calculateCharLength(text) > 16) {
+                            nicknameField.setText(truncateText(text));
+                            text = nicknameField.getText();
+                        }
+                        int used = calculateCharLength(text);
+                        int remaining = 16 - used;
+                        countLabel.setText("剩余可输入：" + remaining + " 字符");
+                        countLabel.setForeground(remaining < 0 ? Color.RED : Color.GRAY);
+                    }
+                });
+
+
+                // 5. 确认按钮区域（居中）
+                JPanel btnPanel = new JPanel();
+                btnPanel.setBackground(Color.WHITE);
+                JButton confirmBtn = new JButton("确认");
+                confirmBtn.setFont(chineseFont);
+                confirmBtn.setPreferredSize(new Dimension(100, 35));
+                confirmBtn.setBackground(Color.LIGHT_GRAY);
+                confirmBtn.setBorderPainted(false);
+
+                String[] nicknameHolder = new String[1];
+                confirmBtn.addActionListener(e -> {
+                    nicknameHolder[0] = nicknameField.getText().trim();
+                    inputDialog.dispose();
+                });
+                btnPanel.add(confirmBtn);
+                inputDialog.add(btnPanel, BorderLayout.SOUTH);
+
+
+                // 6. 关闭对话框默认值
+                inputDialog.addWindowListener(new WindowAdapter() {
+                    @Override
+                    public void windowClosing(WindowEvent e) {
+                        nicknameHolder[0] = null;
+                    }
+                });
+
+
+                // 显示对话框
+                inputDialog.setVisible(true);
+                String nickname = nicknameHolder[0];
                 ScoreUtil.saveScore(nickname, score);
                 repaint();
             });
@@ -333,8 +469,8 @@ public class GamePanel extends JPanel implements Runnable {
             g2d.setColor(Color.WHITE);
             g2d.setFont(new Font("微软雅黑", Font.BOLD, 30));
             g2d.drawString("最终得分: " + score, getWidth()/2 - 100, getHeight()/2 - 100);
-            g2d.drawString("到达波次: " + currentWaveNumber, getWidth()/2 - 120, getHeight()/2 - 50);
-            g2d.drawString("历史最高分: " + ScoreUtil.getHighestScore(), getWidth()/2 - 120, getHeight()/2);
+            g2d.drawString("到达波次: " + currentWaveNumber, getWidth()/2 - 100, getHeight()/2 - 50);
+            g2d.drawString("历史最高分: " + ScoreUtil.getHighestScore(), getWidth()/2 - 100, getHeight()/2);
 
             // 绘制排行榜标题（中文）
             g2d.setFont(chineseBoldFont);

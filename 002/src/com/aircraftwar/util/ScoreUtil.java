@@ -28,12 +28,28 @@ public class ScoreUtil {
      * @param score 玩家得分
      */
     public static void saveScore(String nickname, int score) {
-        // ========== 中文昵称容错处理 ==========
+        // 1. 空值处理
         if (nickname == null || nickname.trim().isEmpty()) {
-            nickname = "匿名玩家"; // 中文默认昵称
+            nickname = "匿名玩家";
         } else {
-            // 过滤非法字符，保留中文/英文/数字
+            // 2. 过滤非法字符
             nickname = nickname.replaceAll("[^\\u4e00-\\u9fa5a-zA-Z0-9_]", "");
+            // 3. 数据层二次长度限制（和输入框规则一致）
+            int length = 0;
+            StringBuilder sb = new StringBuilder();
+            for (char c : nickname.toCharArray()) {
+                int charLen = (c >= 0x4E00 && c <= 0x9FA5) ? 2 : 1;
+                if (length + charLen > 16) {
+                    break;
+                }
+                sb.append(c);
+                length += charLen;
+            }
+            nickname = sb.toString();
+            // 4. 截断后仍为空则设为匿名
+            if (nickname.isEmpty()) {
+                nickname = "匿名玩家";
+            }
         }
         allScores.add(new ScoreRecord(nickname, score));
         saveScoresToFile();
