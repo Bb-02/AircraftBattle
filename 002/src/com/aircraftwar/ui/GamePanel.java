@@ -5,6 +5,7 @@ import com.aircraftwar.util.AudioUtil;
 import com.aircraftwar.entity.ScoreRecord;
 import com.aircraftwar.util.ScoreUtil;
 
+import javax.imageio.ImageIO;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.KeyAdapter;
@@ -13,6 +14,8 @@ import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.awt.event.FocusAdapter;
 import java.awt.event.FocusEvent;
+import java.awt.image.BufferedImage;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -60,7 +63,7 @@ public class GamePanel extends JPanel implements Runnable {
 
     public GamePanel() {
         // 初始化面板
-        setPreferredSize(new Dimension(800, 600));
+        setPreferredSize(new Dimension(800, 850));
         setBackground(Color.BLACK);
 
         // ========== 核心修复1：初始化支持中文的字体 ==========
@@ -73,6 +76,8 @@ public class GamePanel extends JPanel implements Runnable {
             chineseBoldFont = new Font("SimSun", Font.BOLD, 25);
         }
 
+        // 加载背景图（确保在 initGame 之前或至少在首次绘制前加载）
+        loadBackground();
         // 初始化游戏元素
         initGame();
 
@@ -443,15 +448,51 @@ public class GamePanel extends JPanel implements Runnable {
         rightPressed = false;
         shootPressed = false;
     }
+    // 在 GamePanel 类内，添加字段并在构造器中加载图片
+    private BufferedImage backgroundImage;
 
+    public void loadBackground() {
+        // 先尝试从 classpath 加载（需要 images 目录在 classpath 下，例如 resources 或 标记为 Resources Root）
+        try {
+            java.net.URL url = getClass().getResource("/images/Background.png");
+            if (url != null) {
+                backgroundImage = ImageIO.read(url);
+                return;
+            }
+        } catch (IOException ignored) {
+            // 继续尝试文件路径回退
+        }
+
+        // 回退：直接从项目相对文件系统路径加载（开发时方便，打包后请使用 classpath）
+        try {
+            java.io.File f = new java.io.File("images/Background.png");
+            if (f.exists()) {
+                backgroundImage = ImageIO.read(f);
+                return;
+            }
+        } catch (IOException ignored) {
+        }
+
+        // 都失败时设为 null（画面会用纯色兜底）
+        backgroundImage = null;
+    }
     // 绘制游戏界面（新增小队/波次信息）
     @Override
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);
         Graphics2D g2d = (Graphics2D) g;
+        g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+
         // 开启文字抗锯齿，避免中文显示模糊
         g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-
+        if (backgroundImage != null) {
+            // 简单拉伸铺满整个面板：
+            g2d.drawImage(backgroundImage, 0, 0, getWidth(), getHeight(), null);
+        } else {
+            // 图片加载失败，使用纯色背景作为兜底
+            g2d.setColor(Color.BLACK);
+            g2d.fillRect(0, 0, getWidth(), getHeight());
+        }
         if (gameState == GAME_RUNNING) {
             // 绘制玩家
             player.draw(g);
@@ -493,7 +534,7 @@ public class GamePanel extends JPanel implements Runnable {
             if (remainingTime < 0) remainingTime = 0;
             g.drawString("波次剩余时间: " + remainingTime + "s", 20, 150);
 
-// 玩家生命值（使用加粗中文字体）
+            // 玩家生命值（使用加粗中文字体）
             Font hpFont = chineseBoldFont != null ? chineseBoldFont.deriveFont(Font.BOLD, 20f) : new Font("微软雅黑", Font.BOLD, 20);
             g.setFont(hpFont);
             g.drawString("HP: " + player.getHp(), getWidth() - 80, 30);

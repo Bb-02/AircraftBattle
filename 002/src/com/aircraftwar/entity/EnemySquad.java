@@ -73,7 +73,7 @@ public class EnemySquad {
         if (enemyCount > 5) enemyCount = 5;
 
         // 波次越高，移动速度越快
-        this.moveSpeed = 2 + waveNumber;
+        this.moveSpeed = 4 + waveNumber;
         if (moveSpeed > 8) moveSpeed = 8;
 
         // 随机选择编队形状和运动类型（波次越高，复杂运动类型概率越高）
