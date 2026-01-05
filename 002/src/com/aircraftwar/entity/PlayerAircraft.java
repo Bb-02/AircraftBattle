@@ -99,6 +99,8 @@ public class PlayerAircraft extends Aircraft {
         // AudioUtil.playPlayerDeadSound(); // 保留音效（如有）
     }
 
+
+
     public List<Bullet> getBullets() {
         return bullets;
     }

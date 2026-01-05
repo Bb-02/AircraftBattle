@@ -11,6 +11,8 @@ import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
+import java.awt.event.FocusAdapter;
+import java.awt.event.FocusEvent;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -77,7 +79,14 @@ public class GamePanel extends JPanel implements Runnable {
         // 添加键盘监听
         addKeyListener(new GameKeyListener());
         setFocusable(true);
-        requestFocus();
+        // 使用更现代的 requestFocusInWindow，并在失去焦点时清理按键状态
+        requestFocusInWindow();
+        addFocusListener(new FocusAdapter() {
+            @Override
+            public void focusLost(FocusEvent e) {
+                resetInputStates();
+            }
+        });
 
         // 启动游戏线程
         startGameThread();
@@ -85,6 +94,9 @@ public class GamePanel extends JPanel implements Runnable {
 
     // 初始化游戏
     private void initGame() {
+        // 清除遗留的按键状态，确保新开局不会继承上局方向
+        resetInputStates();
+
         // 创建玩家飞机（居中底部）
         player = new PlayerAircraft(400 - 20, 500);
 
@@ -100,10 +112,16 @@ public class GamePanel extends JPanel implements Runnable {
 
         // 播放背景音乐
         AudioUtil.playBGM();
+
+        // 确保面板重新获得键盘焦点（对话框关闭或其他窗口抢占焦点后仍能输入）
+        requestFocusInWindow();
     }
 
     // 启动新波次（无尽型，无限递增）
     private void startNewWave() {
+        // 切换波次时清理按键状态，避免玩家在波次切换瞬间保持按键
+        resetInputStates();
+
         currentWave = new Wave(currentWaveNumber);
         // 打印波次信息（控制台）
         System.out.println("===== 无尽模式 - 第" + currentWaveNumber + "波 =====");
@@ -111,6 +129,9 @@ public class GamePanel extends JPanel implements Runnable {
         for (EnemySquad squad : currentWave.getSquads()) {
             System.out.println("小队" + squad.getSquadId() + "：编队=" + squad.getFormation() + "，运动=" + squad.getMoveType());
         }
+
+        // 尝试恢复焦点，保证玩家能马上控制飞机
+        requestFocusInWindow();
     }
 
     // 检查波次切换（无尽型，波次无限递增）
@@ -262,6 +283,8 @@ public class GamePanel extends JPanel implements Runnable {
     private void checkGameOver() {
         if (!player.isAlive() && gameState != GAME_OVER) {
             gameState = GAME_OVER;
+            // 进入游戏结束状态时清除所有按键状态，防止焦点/按键事件丢失导致下一把继承方向
+            resetInputStates();
             AudioUtil.stopBGM();
             AudioUtil.playGameOverSound();
 
@@ -412,6 +435,15 @@ public class GamePanel extends JPanel implements Runnable {
         }
     }
 
+    // 清理所有按键状态（在新局/波次开始或失去焦点时调用）
+    private void resetInputStates() {
+        upPressed = false;
+        downPressed = false;
+        leftPressed = false;
+        rightPressed = false;
+        shootPressed = false;
+    }
+
     // 绘制游戏界面（新增小队/波次信息）
     @Override
     protected void paintComponent(Graphics g) {
@@ -440,23 +472,30 @@ public class GamePanel extends JPanel implements Runnable {
             }
 
             // 绘制游戏信息（雷霆战机风格UI）
+
             g.setColor(Color.WHITE);
-            g.setFont(new Font("Arial", Font.BOLD, 20));
+            // 使用中文字体变量并设置大小与样式（比直接 new Font 更可靠）
+            Font infoFont = chineseFont != null ? chineseFont.deriveFont(Font.PLAIN, 20f) : new Font("微软雅黑", Font.PLAIN, 20);
+            g.setFont(infoFont);
+
             // 分数（波次越高，得分倍率越高）
-            g.drawString("Score: " + score + " (x" + currentWaveNumber + ")", 20, 30);
+            g.drawString("分数: " + score + " (x" + currentWaveNumber + ")", 20, 30);
             // 历史最高分
-            g.drawString("Highest: " + ScoreUtil.getHighestScore(), 20, 60);
+            g.drawString("历史最高分: " + ScoreUtil.getHighestScore(), 20, 60);
             // 当前波次
-            g.drawString("Wave: " + currentWaveNumber, 20, 90);
+            g.drawString("当前波次: " + currentWaveNumber, 20, 90);
             // 剩余小队数
             long aliveSquads = squads.stream().filter(s -> s.isSpawned() && !s.isAllDead()).count();
-            g.drawString("Squads Left: " + aliveSquads + "/" + squads.size(), 20, 120);
+            g.drawString("剩余小队数: " + aliveSquads + "/" + squads.size(), 20, 120);
             // 波次剩余时间
             long elapsedTime = System.currentTimeMillis() - currentWave.getStartTime();
             long remainingTime = (currentWave.getDuration() - elapsedTime) / 1000;
             if (remainingTime < 0) remainingTime = 0;
-            g.drawString("Wave Time Left: " + remainingTime + "s", 20, 150);
-            // 玩家生命值
+            g.drawString("波次剩余时间: " + remainingTime + "s", 20, 150);
+
+// 玩家生命值（使用加粗中文字体）
+            Font hpFont = chineseBoldFont != null ? chineseBoldFont.deriveFont(Font.BOLD, 20f) : new Font("微软雅黑", Font.BOLD, 20);
+            g.setFont(hpFont);
             g.drawString("HP: " + player.getHp(), getWidth() - 80, 30);
 
         } else if (gameState == GAME_OVER) {

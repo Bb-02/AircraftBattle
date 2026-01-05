@@ -13,7 +13,7 @@ public class GameFrame extends JFrame {
 
     public GameFrame() {
         // 窗口设置
-        setTitle("Java飞机大战（无外部资源版）");
+        setTitle("飞机大战");
         setDefaultCloseOperation(EXIT_ON_CLOSE);
         setResizable(false);
 
