@@ -27,7 +27,7 @@ public class PlayerAircraft extends Aircraft {
 
     // 升级相关（简易实现）
     private boolean shieldActive = false;
-    private int fireLevel = 0; // 0..3
+    private int fireLevel = 1; // lv1..lv3, 初始 lv1
 
     public PlayerAircraft(int x, int y) {
         super(x, y, 5, 3, PLAYER_WIDTH, PLAYER_HEIGHT);
@@ -53,8 +53,15 @@ public class PlayerAircraft extends Aircraft {
     public void shoot() {
         long currentTime = System.currentTimeMillis();
         if (currentTime - lastShootTime >= shootInterval) {
-            IBullet b = ProjectileFactory.createPlayerBullet(x, y, PLAYER_WIDTH);
-            bullets.add(b);
+            // 根据当前火力等级发射多条弹道（同一行，左右分布）
+            int n = Math.max(1, Math.min(3, fireLevel));
+            int spacing = 16; // 子弹间距（像素）
+            for (int i = 0; i < n; i++) {
+                int shift = (2 * i - (n - 1)) * spacing / 2; // 对称分布
+                int fakePlayerX = x + shift;
+                IBullet b = ProjectileFactory.createPlayerBullet(fakePlayerX, y, PLAYER_WIDTH);
+                bullets.add(b);
+            }
             lastShootTime = currentTime;
             // AudioUtil.playShootSound(); // 保留音效（如有）
         }
@@ -127,8 +134,6 @@ public class PlayerAircraft extends Aircraft {
     public void increaseFirePower() {
         if (fireLevel >= 3) return;
         fireLevel++;
-        // 每次提升减少射击间隔 40ms，最短 50ms
-        shootInterval = Math.max(50, shootInterval - 40);
     }
 
     /**
@@ -201,4 +206,3 @@ public class PlayerAircraft extends Aircraft {
         return bullets;
     }
 }
-

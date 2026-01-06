@@ -14,6 +14,8 @@ public class EnemyBullet implements IBullet {
     private int speed = 5; // 子弹速度（向下）
     private boolean alive; // 是否存活
     private int damage = 1;
+    private final String type = "enemy_basic";
+    private final int ownerId = -1;
 
     public EnemyBullet(int x, int y) {
         this.x = x;
@@ -31,7 +33,7 @@ public class EnemyBullet implements IBullet {
     public void move() {
         y += speed;
         // 飞出屏幕则失效
-        if (y > 600) {
+        if (y > 850) {
             alive = false;
         }
     }
@@ -70,4 +72,10 @@ public class EnemyBullet implements IBullet {
     public int getDamage() {
         return damage;
     }
+
+    @Override
+    public String getType() { return type; }
+
+    @Override
+    public int getOwnerId() { return ownerId; }
 }

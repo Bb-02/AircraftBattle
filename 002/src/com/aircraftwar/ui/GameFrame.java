@@ -1,5 +1,7 @@
 package com.aircraftwar.ui;
 
+import com.aircraftwar.factory.ProjectileFactory;
+
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.WindowAdapter;
@@ -20,6 +22,15 @@ public class GameFrame extends JFrame {
         // 创建游戏面板
         gamePanel = new GamePanel();
         add(gamePanel);
+
+        // 注册一个示例弹种（laser）供后续使用/测试
+        ProjectileFactory.register("laser", params -> {
+            // 简单示例：复用 player_basic but could create LaserBullet in future
+            return ProjectileFactory.create("player_basic", params);
+        });
+
+        // 初始化 UpgradeManager（确保其订阅分数变更事件）
+        com.aircraftwar.upgrade.UpgradeManager.getInstance();
 
         // 自适应大小
         pack();

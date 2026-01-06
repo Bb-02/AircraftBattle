@@ -8,6 +8,7 @@ import com.aircraftwar.event.EventBus;
 import com.aircraftwar.event.events.FireEvent;
 import com.aircraftwar.event.events.ScoreChangedEvent;
 import com.aircraftwar.event.events.SoundEvent;
+import com.aircraftwar.event.events.UpgradeRequestEvent;
 
 import javax.imageio.ImageIO;
 import javax.swing.*;
@@ -23,7 +24,6 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Random;
 
 
 import javax.swing.event.DocumentListener;
@@ -47,7 +47,6 @@ public class GamePanel extends JPanel implements Runnable {
 
     // 游戏参数
     private int score = 0;
-    private Random random = new Random();
 
     // 键盘控制
     private boolean upPressed;
@@ -105,6 +104,28 @@ public class GamePanel extends JPanel implements Runnable {
                         break;
                 }
             } catch (Exception ignored) {}
+        });
+
+        // 订阅升级请求事件，弹出三选一升级对话
+        EventBus.getDefault().subscribe(com.aircraftwar.event.events.UpgradeRequestEvent.class, (ure) -> {
+            // 在 EDT 中显示对话并暂停游戏
+            SwingUtilities.invokeLater(() -> {
+                // 暂停游戏循环
+                int prevState = gameState;
+                gameState = GAME_START; // 临时暂停（避免 updateGame 执行)
+
+                PlayerAircraft p = ure.getPlayer();
+                // 使用自定义对话
+                UpgradeDialog dlg = new UpgradeDialog(SwingUtilities.getWindowAncestor(this), p, com.aircraftwar.upgrade.UpgradeManager.getInstance().getAppliedCount(p));
+                int choice = dlg.showDialog();
+                if (choice >= 0 && choice < 3) {
+                    com.aircraftwar.upgrade.UpgradeOption opt = com.aircraftwar.upgrade.UpgradeOption.values()[choice];
+                    com.aircraftwar.upgrade.UpgradeManager.getInstance().applyUpgrade(p, opt);
+                }
+
+                // 恢复游戏状态
+                gameState = prevState;
+            });
         });
 
         // 初始化游戏元素
@@ -203,6 +224,9 @@ public class GamePanel extends JPanel implements Runnable {
                 delta--;
             }
 
+            // 处理事件总线中队列的事件（在主线程/主循环处理，避免异步订阅者并发问题）
+            EventBus.getDefault().drain();
+
             repaint(); // 重绘界面
 
             try {
@@ -287,7 +311,7 @@ public class GamePanel extends JPanel implements Runnable {
                     EventBus.getDefault().post(new SoundEvent("explode", 1.0f));
                     int oldScore = score;
                     score += 10 * currentWaveNumber; // 波次越高，得分越高（无尽难度奖励）
-                    EventBus.getDefault().post(new ScoreChangedEvent(oldScore, score));
+                    EventBus.getDefault().post(new com.aircraftwar.event.events.ScoreChangedEvent(oldScore, score, player));
                     break;
                 }
             }

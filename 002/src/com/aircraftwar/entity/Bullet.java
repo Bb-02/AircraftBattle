@@ -14,6 +14,8 @@ public class Bullet implements IBullet {
     private int size = 6;  // 子弹尺寸（确保可见）
     private boolean alive = true; // 存活状态
     private int damage = 1;
+    private final String type = "player_basic";
+    private final int ownerId = 0;
 
     // 构造方法：子弹生成在玩家飞机顶部中间
     public Bullet(int playerX, int playerY, int playerWidth) {
@@ -83,4 +85,10 @@ public class Bullet implements IBullet {
     public int getDamage() {
         return damage;
     }
+
+    @Override
+    public String getType() { return type; }
+
+    @Override
+    public int getOwnerId() { return ownerId; }
 }

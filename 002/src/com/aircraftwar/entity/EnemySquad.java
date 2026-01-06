@@ -320,7 +320,7 @@ public class EnemySquad {
                 // 缓慢向下撤退离开屏幕
                 baseY += Math.max(2, moveSpeed / 2);
                 baseX += (int) (Math.sin(now / 700.0) * moveSpeed);
-                if (baseY > panelHeight + 100) {
+                if (baseY > panelHeight + 50) {
                     // 让所有敌机离场并标记为死亡，避免无法被玩家击中却仍被判活着
                     enemies.forEach(e -> {
                         e.setY(baseY + 200);
