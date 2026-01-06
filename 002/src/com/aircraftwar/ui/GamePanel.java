@@ -4,6 +4,10 @@ import com.aircraftwar.entity.*;
 import com.aircraftwar.util.AudioUtil;
 import com.aircraftwar.entity.ScoreRecord;
 import com.aircraftwar.util.ScoreUtil;
+import com.aircraftwar.event.EventBus;
+import com.aircraftwar.event.events.FireEvent;
+import com.aircraftwar.event.events.ScoreChangedEvent;
+import com.aircraftwar.event.events.SoundEvent;
 
 import javax.imageio.ImageIO;
 import javax.swing.*;
@@ -78,6 +82,31 @@ public class GamePanel extends JPanel implements Runnable {
 
         // 加载背景图（确保在 initGame 之前或至少在首次绘制前加载）
         loadBackground();
+
+        // 订阅音效事件，桥接到 AudioUtil（AudioUtil 已经委托给 SoundManager）
+        EventBus.getDefault().subscribe(com.aircraftwar.event.events.SoundEvent.class, (se) -> {
+            try {
+                String id = se.getSoundId();
+                switch (id) {
+                    case "shoot":
+                        com.aircraftwar.util.AudioUtil.playShootSound();
+                        break;
+                    case "explode":
+                        com.aircraftwar.util.AudioUtil.playExplodeSound();
+                        break;
+                    case "bgm":
+                        // 约定：volume > 0 表示开始播放，<=0 停止
+                        if (se.getVolume() > 0f) com.aircraftwar.util.AudioUtil.playBGM();
+                        else com.aircraftwar.util.AudioUtil.stopBGM();
+                        break;
+                    default:
+                        // 其他由 id 直接映射到 AudioUtil 或 SoundManager
+                        com.aircraftwar.util.AudioUtil.playShootSound();
+                        break;
+                }
+            } catch (Exception ignored) {}
+        });
+
         // 初始化游戏元素
         initGame();
 
@@ -189,12 +218,18 @@ public class GamePanel extends JPanel implements Runnable {
         // 控制玩家移动
         controlPlayerMovement();
 
-        // 更新当前波次（小队移动+子弹）
+        // 更新当前波次（小队移动+子弹)
         currentWave.updateWave();
+
+        // 更新玩家状态（新增：处理无敌计时）
+        if (player != null) player.update();
 
         // 更新玩家子弹
         if (shootPressed) {
             player.shoot();
+            // 发布发射事件 + 播放音效事件（可由 SoundManager 处理）
+            EventBus.getDefault().post(new FireEvent(0, "basic", player.getX(), player.getY()));
+            EventBus.getDefault().post(new SoundEvent("shoot", 1.0f));
         }
         player.updateBullets();
 
@@ -238,15 +273,21 @@ public class GamePanel extends JPanel implements Runnable {
         for (EnemyAircraft enemy : allEnemies) {
             if (!enemy.isAlive()) continue;
 
-            Iterator<Bullet> bulletIterator = player.getBullets().iterator();
+            Iterator<IBullet> bulletIterator = player.getBullets().iterator();
             while (bulletIterator.hasNext()) {
-                Bullet bullet = bulletIterator.next();
+                IBullet bullet = bulletIterator.next();
                 if (bullet.isAlive() && bullet.getCollisionRect().intersects(enemy.getCollisionRect())) {
-                    bullet.hitTarget(enemy);
+                    // apply damage from bullet to enemy
+                    enemy.hit(bullet.getDamage());
+                    bullet.setAlive(false);
                     bulletIterator.remove();
                     // 添加爆炸效果
                     explosions.add(new Explosion(enemy.getX(), enemy.getY()));
+                    // 发布爆炸音效事件和得分事件
+                    EventBus.getDefault().post(new SoundEvent("explode", 1.0f));
+                    int oldScore = score;
                     score += 10 * currentWaveNumber; // 波次越高，得分越高（无尽难度奖励）
+                    EventBus.getDefault().post(new ScoreChangedEvent(oldScore, score));
                     break;
                 }
             }
@@ -256,9 +297,9 @@ public class GamePanel extends JPanel implements Runnable {
         for (EnemyAircraft enemy : allEnemies) {
             if (!enemy.isAlive()) continue;
 
-            Iterator<EnemyBullet> enemyBulletIterator = enemy.getBullets().iterator();
+            Iterator<IBullet> enemyBulletIterator = enemy.getBullets().iterator();
             while (enemyBulletIterator.hasNext()) {
-                EnemyBullet eBullet = enemyBulletIterator.next();
+                IBullet eBullet = enemyBulletIterator.next();
                 if (eBullet.isAlive() && eBullet.getCollisionRect().intersects(player.getCollisionRect())) {
                     // 玩家扣血（波次越高，扣血越多）
                     player.hit(currentWaveNumber / 2 + 1);
@@ -266,6 +307,7 @@ public class GamePanel extends JPanel implements Runnable {
                     enemyBulletIterator.remove();
                     // 添加爆炸效果
                     explosions.add(new Explosion(player.getX(), player.getY()));
+                    EventBus.getDefault().post(new SoundEvent("explode", 1.0f));
                     break;
                 }
             }
@@ -274,9 +316,10 @@ public class GamePanel extends JPanel implements Runnable {
         // 3. 敌机碰撞玩家
         for (EnemyAircraft enemy : allEnemies) {
             if (enemy.isAlive() && enemy.getCollisionRect().intersects(player.getCollisionRect())) {
-                player.hit(2); // 碰撞扣2血
+                player.hit(1); // 改为只扣1血，和敌机子弹一致
                 enemy.hit(1);
                 explosions.add(new Explosion(player.getX(), player.getY()));
+                EventBus.getDefault().post(new SoundEvent("explode", 1.0f));
                 break;
             }
         }

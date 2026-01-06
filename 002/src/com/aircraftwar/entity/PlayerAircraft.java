@@ -1,5 +1,7 @@
 package com.aircraftwar.entity;
 
+import com.aircraftwar.factory.ProjectileFactory;
+import com.aircraftwar.entity.IBullet;
 import com.aircraftwar.util.ImageUtil;
 import java.awt.*;
 import java.awt.image.BufferedImage;
@@ -8,7 +10,7 @@ import java.util.Iterator;
 import java.util.List;
 
 public class PlayerAircraft extends Aircraft {
-    private List<Bullet> bullets;
+    private List<IBullet> bullets;
     private long lastShootTime;
     private long shootInterval = 200;
 
@@ -17,6 +19,15 @@ public class PlayerAircraft extends Aircraft {
     private static final int PLAYER_HEIGHT = 50;
     // 玩家飞机图片
     private BufferedImage playerImage;
+
+    // 新增：无敌相关状态（受伤后短暂无敌）
+    private boolean invincible = false;
+    private long invincibleUntil = 0L;
+    private static final long INVINCIBLE_MS = 1000L; // 1秒无敌
+
+    // 升级相关（简易实现）
+    private boolean shieldActive = false;
+    private int fireLevel = 0; // 0..3
 
     public PlayerAircraft(int x, int y) {
         super(x, y, 5, 3, PLAYER_WIDTH, PLAYER_HEIGHT);
@@ -42,20 +53,28 @@ public class PlayerAircraft extends Aircraft {
     public void shoot() {
         long currentTime = System.currentTimeMillis();
         if (currentTime - lastShootTime >= shootInterval) {
-            bullets.add(new Bullet(x, y, PLAYER_WIDTH));
+            IBullet b = ProjectileFactory.createPlayerBullet(x, y, PLAYER_WIDTH);
+            bullets.add(b);
             lastShootTime = currentTime;
             // AudioUtil.playShootSound(); // 保留音效（如有）
         }
     }
 
     public void updateBullets() {
-        Iterator<Bullet> iterator = bullets.iterator();
+        Iterator<IBullet> iterator = bullets.iterator();
         while (iterator.hasNext()) {
-            Bullet bullet = iterator.next();
+            IBullet bullet = iterator.next();
             bullet.update();
             if (!bullet.isAlive()) {
                 iterator.remove();
             }
+        }
+    }
+
+    // 新增：每帧更新，处理无敌时长结束
+    public void update() {
+        if (invincible && System.currentTimeMillis() > invincibleUntil) {
+            invincible = false;
         }
     }
 
@@ -66,11 +85,88 @@ public class PlayerAircraft extends Aircraft {
             Graphics2D g2d = (Graphics2D) g;
             ImageUtil.drawImage(g2d, playerImage, x, y, PLAYER_WIDTH, PLAYER_HEIGHT);
 
+            // 若处于无敌状态，绘制金色光圈
+            if (invincible) {
+                // 使用半透明的金色并适当描边
+                Composite oldComp = g2d.getComposite();
+                Stroke oldStroke = g2d.getStroke();
+                Color oldColor = g2d.getColor();
+
+                g2d.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.75f));
+                g2d.setColor(new Color(255, 215, 0)); // 金色
+                g2d.setStroke(new BasicStroke(4f));
+
+                int pad = Math.max(PLAYER_WIDTH, PLAYER_HEIGHT) / 4;
+                int ox = x - pad;
+                int oy = y - pad;
+                int ow = PLAYER_WIDTH + pad * 2;
+                int oh = PLAYER_HEIGHT + pad * 2;
+                g2d.drawOval(ox, oy, ow, oh);
+
+                // 更外层的柔和光晕
+                g2d.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.35f));
+                g2d.setStroke(new BasicStroke(10f));
+                g2d.drawOval(ox - 3, oy - 3, ow + 6, oh + 6);
+
+                // 恢复画笔状态
+                g2d.setComposite(oldComp);
+                g2d.setStroke(oldStroke);
+                g2d.setColor(oldColor);
+            }
+
             // 绘制子弹（原有逻辑不变）
-            for (Bullet bullet : bullets) {
-                bullet.draw(g);
+            for (IBullet bullet : bullets) {
+                bullet.render(g);
             }
         }
+    }
+
+    /**
+     * 增加火力（缩短射击间隔），有上限
+     */
+    public void increaseFirePower() {
+        if (fireLevel >= 3) return;
+        fireLevel++;
+        // 每次提升减少射击间隔 40ms，最短 50ms
+        shootInterval = Math.max(50, shootInterval - 40);
+    }
+
+    /**
+     * 增加速度
+     */
+    public void increaseSpeed() {
+        this.speed += 1; // 简单增加1
+    }
+
+    /**
+     * 添加一次性盾，下一次受击消耗盾并免伤
+     */
+    public void addShield() {
+        this.shieldActive = true;
+    }
+
+    public boolean hasShield() { return shieldActive; }
+
+    // 覆盖 hit：在无敌期间忽略伤害，若有盾则消耗盾并忽略伤害，受伤后进入短暂无敌
+    @Override
+    public void hit(int damage) {
+        if (invincible) return; // 无敌期间忽略伤害
+        if (shieldActive) {
+            // 消耗盾
+            shieldActive = false;
+            // 可触发盾被吸收音效
+            return;
+        }
+        super.hit(damage);
+        // 如果仍然存活则开启短暂无敌
+        if (isAlive()) {
+            invincible = true;
+            invincibleUntil = System.currentTimeMillis() + INVINCIBLE_MS;
+        }
+    }
+
+    public boolean isInvincible() {
+        return invincible;
     }
 
     // 其他方法（moveUp/moveDown等）不变
@@ -101,7 +197,8 @@ public class PlayerAircraft extends Aircraft {
 
 
 
-    public List<Bullet> getBullets() {
+    public List<IBullet> getBullets() {
         return bullets;
     }
 }
+

@@ -9,6 +9,9 @@ import java.awt.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
+import com.aircraftwar.factory.ProjectileFactory;
+import com.aircraftwar.entity.IBullet;
+import java.util.Iterator;
 
 /**
  * 敌机类（适配小队初始位置 + 修复waveNumber未定义问题 + 替换为图片绘制）
@@ -26,7 +29,7 @@ public class EnemyAircraft extends Aircraft {
     private int waveNumber;
 
     // 子弹相关
-    private List<EnemyBullet> bullets;
+    private List<IBullet> bullets;
     private long lastShootTime;
     private long shootInterval;
 
@@ -96,7 +99,8 @@ public class EnemyAircraft extends Aircraft {
         double shootProb = Math.min(0.1 * this.waveNumber, 0.8);
         if (currentTime - lastShootTime >= shootInterval && random.nextDouble() < shootProb) {
             // 子弹位置：敌机底部中间
-            bullets.add(new EnemyBullet(x + width/2 - 3, y + height));
+            IBullet b = ProjectileFactory.createEnemyBullet(x + width/2 - 3, y + height);
+            bullets.add(b);
             lastShootTime = currentTime;
         }
     }
@@ -106,8 +110,8 @@ public class EnemyAircraft extends Aircraft {
         // 移除失效子弹
         bullets.removeIf(bullet -> !bullet.isAlive());
         // 移动子弹
-        for (EnemyBullet bullet : bullets) {
-            bullet.move();
+        for (IBullet bullet : bullets) {
+            bullet.update();
         }
     }
 
@@ -121,8 +125,8 @@ public class EnemyAircraft extends Aircraft {
             ImageUtil.drawImage(g2d, enemyImage, x, y, ENEMY_WIDTH, ENEMY_HEIGHT);
 
             // 子弹绘制逻辑完全保留
-            for (EnemyBullet bullet : bullets) {
-                bullet.draw(g);
+            for (IBullet bullet : bullets) {
+                bullet.render(g);
             }
         }
     }
@@ -134,7 +138,7 @@ public class EnemyAircraft extends Aircraft {
     }
 
     // Getter & Setter（原有逻辑完全保留）
-    public List<EnemyBullet> getBullets() { return bullets; }
+    public List<IBullet> getBullets() { return bullets; }
     public boolean isEscaping() { return isEscaping; }
     public void setEscaping(boolean escaping) { isEscaping = escaping; }
     public void setX(int x) { this.x = x; }

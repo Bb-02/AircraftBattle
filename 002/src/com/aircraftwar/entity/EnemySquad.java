@@ -50,7 +50,7 @@ public class EnemySquad {
     private long phaseStartTime;
     private Map<EnemyAircraft, DiveInfo> diveMap = new HashMap<>();
     private int panelWidth = 800;
-    private int panelHeight = 600;
+    private int panelHeight = 850;
     private int boundary = 50;
 
     // 玩家位置（由外部设置，用于俯冲目标）
@@ -394,7 +394,7 @@ public class EnemySquad {
                 di.isDiving = true;
                 di.returning = false;
                 di.progress = 0;
-                di.progressStep = 0.03 + random.nextDouble() * 0.01; // 控制速度
+                di.progressStep = 0.02 + random.nextDouble() * 0.01; // 控制速度
                 // 目标在玩家附近，带一点随机偏差与前导
                 di.diveTargetX = playerX + random.nextInt(120) - 60;
                 di.diveTargetY = Math.min(playerY + 20 + random.nextInt(80), panelHeight - 50);
