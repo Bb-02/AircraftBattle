@@ -409,11 +409,11 @@ public class EnemySquad {
 
     // 更新小队敌机子弹
     public void updateSquadBullets() {
-        if (!isSpawned || isAllDead) return;
+        if (!isSpawned) return;
+
+        // 注意：即便敌机已经死亡/小队全灭，也要继续更新其残留子弹，直到子弹自己飞出边界。
         for (EnemyAircraft enemy : enemies) {
-            if (enemy.isAlive()) {
-                enemy.updateBullets();
-            }
+            enemy.updateBullets();
         }
     }
 
@@ -444,3 +444,4 @@ public class EnemySquad {
         }
     }
 }
+

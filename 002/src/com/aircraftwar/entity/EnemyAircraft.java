@@ -1,7 +1,6 @@
 package com.aircraftwar.entity;
 
-import com.aircraftwar.util.DrawUtil;
-// ========== 新增：导入图片工具类和图片类型 ==========
+// 删除未使用的 DrawUtil/Iterator/重复导入等
 import com.aircraftwar.util.ImageUtil;
 import java.awt.image.BufferedImage;
 
@@ -10,8 +9,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 import com.aircraftwar.factory.ProjectileFactory;
-import com.aircraftwar.entity.IBullet;
-import java.util.Iterator;
 
 /**
  * 敌机类（适配小队初始位置 + 修复waveNumber未定义问题 + 替换为图片绘制）
@@ -118,16 +115,15 @@ public class EnemyAircraft extends Aircraft {
     // 绘制敌机+子弹（核心修改：替换为图片绘制）
     @Override
     public void draw(Graphics g) {
+        // 敌机本体：只有存活时绘制
         if (isAlive()) {
-            // ========== 核心修改：删除DrawUtil绘制，改为图片绘制 ==========
-            // 原代码：DrawUtil.drawEnemyAircraft((Graphics2D) g, x, y, width, height);
             Graphics2D g2d = (Graphics2D) g;
             ImageUtil.drawImage(g2d, enemyImage, x, y, ENEMY_WIDTH, ENEMY_HEIGHT);
+        }
 
-            // 子弹绘制逻辑完全保留
-            for (IBullet bullet : bullets) {
-                bullet.render(g);
-            }
+        // 子弹：不依赖敌机存活（敌机被击败后，已发射子弹仍应继续飞行直到越界）
+        for (IBullet bullet : bullets) {
+            bullet.render(g);
         }
     }
 
