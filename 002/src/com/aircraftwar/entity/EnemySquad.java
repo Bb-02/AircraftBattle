@@ -30,8 +30,10 @@ public class EnemySquad {
     private int enemyCount;             // 小队敌机数量
     private int waveNumber;             // 所属波次
     private List<EnemyAircraft> enemies;// 小队敌机列表
+    // 新增：标记敌机对象是否已真正创建（lazy spawn）
+    private boolean enemiesCreated = false;
+
     private long spawnDelay;            // 生成延迟（波内小队的生成间隔）
-    private long spawnTime;             // 小队生成时间
     private int baseX, baseY;           // 小队基准位置（编队中心，用于渲染/外部读取）
     private double baseXf, baseYf;      // 新增：小队基准位置（double 缓冲，消除抖动）
     private int targetBaseY;            // 进入阶段目标Y
@@ -40,11 +42,14 @@ public class EnemySquad {
     private boolean isSpawned;          // 是否已生成
     private boolean isAllDead;          // 小队是否全灭
 
+    // 编队槽位偏移（每架机相对 baseX/baseY 的偏移）
+    private final List<Point> formationOffsets = new ArrayList<>();
+
+    // 每个小队的相位偏移：让 sin/cos 轨迹在不同小队间错开，避免“同步抽搐”
+    private final double phaseOffset = random.nextDouble() * Math.PI * 2;
+
     // 运动参数（适配不同轨迹）
-    private int moveDirection = 1;      // 移动方向（1=右/下，-1=左/上）
-    private double spiralAngle = 0;     // 螺旋角度
-    private int zigzagStep = 0;         // Z型折线步数
-    private int zigzagDir = 1;          // Z型折线方向
+    // private int moveDirection = 1;      // 已废弃：改用 velX/velY 驱动
 
     private static final Random random = new Random();
 
@@ -52,25 +57,92 @@ public class EnemySquad {
     private Phase phase = Phase.ENTER;
     private long phaseStartTime;
     private Map<EnemyAircraft, DiveInfo> diveMap = new HashMap<>();
-    private int panelWidth = 800;
-    private int panelHeight = 850;
-    private int boundary = 50;
+    private final int panelWidth = 800;
+    private final int panelHeight = 850;
+    private final int boundary = 50;
 
     // 玩家位置（由外部设置，用于俯冲目标）
     private volatile int playerX = panelWidth / 2;
     private volatile int playerY = panelHeight - 100;
 
-    // 记录编队初始偏移，便于重组
-    private List<Point> formationOffsets = new ArrayList<>();
+    // =====================
+    // 删除：脱队/归队（个别机独立机动）
+    // =====================
+    // private static final long BREAKOFF_MIN_INTERVAL_MS = 1800;
+    // private static final long BREAKOFF_MAX_INTERVAL_MS = 4200;
+    // private static final long BREAKOFF_DURATION_MS = 1200;
+    // private static final int BREAKOFF_MAX_ACTIVE = 2; // 同时最多脱队数量（避免太乱）
 
-    // 新增：每个小队一个相位偏移，避免所有队形同步导致视觉僵硬
-    private final double phaseOffset = random.nextDouble() * Math.PI * 2;
+    // private long nextBreakoffTime = 0L;
+
+    // private final Map<EnemyAircraft, BreakoffInfo> breakoffMap = new HashMap<>();
 
     // 新增：普通阶段敌机活动的最低高度（y 越大越靠近底部）；避免玩家打不到
     private static final int COMBAT_MAX_Y = 700;
 
     // 方案B：俯冲允许更低一点，但仍然不贴底，确保玩家基本还能打到
     private static final int DIVE_MAX_Y = 760;
+
+    // =====================
+    // 反抖动：基准位速度向量 + 反弹冷却
+    // =====================
+    private double velX = 0.0;
+    private double velY = 0.0;
+    private long lastBounceTime = 0L;
+    private static final long BOUNCE_COOLDOWN_MS = 90; // 反弹后短暂冷却，避免边界来回翻
+
+    // 基准速度的平滑控制
+    private double targetVelX = 0.0;
+    private double targetVelY = 0.0;
+    private static final double VEL_SMOOTH = 0.10; // 越大越“跟手”，越小越平滑
+
+    // ZIGZAG/PATROL 等阶段的目标高度（避免写死 300/350 引发钉住抖动）
+    private double roamMinY = 70;
+    private double roamMaxY = 320;
+
+    // 新增：入场时在屏幕外的安全偏移，确保整队（含编队偏移）都在画面外
+    // 进一步加大，按“约 3 架敌机长度”推到更外侧，避免肉眼仍觉得在画面内生成
+    private static final int SPAWN_OUTSIDE_PADDING_Y = 120 + 44 * 3;
+
+    // 可调：生成点距离屏幕顶端（y=0）多远（以敌机高度为单位）
+    private static final int SPAWN_OUTSIDE_ENEMY_HEIGHTS = 3; // 更近一点：约 3 架敌机高度
+
+    // 调试开关：用于定位 spawn 是否仍在画面内（提交前可改回 false）
+    private static final boolean DEBUG_SPAWN = false;
+
+    // 入场最短时长：避免刚 spawn 下一帧就被推进到 y>=0，看起来像“突然生成在画面里”
+    private static final long ENTER_MIN_TIME_MS = 450;
+
+    // 入场采用“俯冲同款”插值曲线：从屏幕外冲入到目标位
+    private double enterProgress = 0.0;
+    private double enterProgressStep = 0.020; // 每帧推进，越小越慢越丝滑
+    private double enterStartXf = 0.0;
+    private double enterStartYf = 0.0;
+    // 新增：锁定入场目标点（避免入场期间目标点变化导致最后一帧跳变）
+    private double enterTargetXf = 0.0;
+    private double enterTargetYf = 0.0;
+
+    // 入场曲线参数：更像“冲入→急刹车”
+    //（已弃用：现在使用 enterProgress 插值冲入）
+    // private static final long ENTER_RUSH_MS = 420;
+    // private static final long ENTER_BRAKE_MS = 520;
+    // private static final double ENTER_RUSH_MAX_VY = 10.0;
+    // private static final double ENTER_BRAKE_MIN_VY = 0.55;
+
+    // 入场“丝滑急刹”参数：不回弹，临界阻尼收敛
+    //（已弃用：现在使用 enterProgress 插值冲入）
+    // private static final double ENTER_APPROACH_ZONE = 90.0;
+    // private static final double ENTER_STOP_EPS = 1.6;
+    // private static final double ENTER_STOP_VE = 0.55;
+    // private static final double ENTER_SMOOTH = 0.22;
+    // private static final double ENTER_MAX_STEP = 12.0;
+
+    // 新增：入场弧线幅度（像俯冲一样轻微弯一下）
+    private static final double ENTER_CURVE_AMPLITUDE = 10.0;
+
+    // 入场目标高度范围（更自然：进入后停在屏幕上方一段距离，再开始巡航）
+    private static final int ENTER_TARGET_Y_MIN = 50;
+    private static final int ENTER_TARGET_Y_MAX = 120;
 
     // 构造方法（根据波次生成小队配置，难度递增）
     public EnemySquad(int squadId, int waveNumber, long spawnDelay) {
@@ -91,11 +163,11 @@ public class EnemySquad {
         // 随机选择编队形状和运动类型（波次越高，复杂运动类型概率越高）
         double complexProb = Math.min(0.1 * waveNumber, 0.9);
         if (random.nextDouble() < complexProb) {
-            int typeIdx = random.nextInt(3);
+            // 移除 SPIRAL：它容易产生“原地转圈圈”的呆板感
+            int typeIdx = random.nextInt(2);
             switch (typeIdx) {
                 case 0: this.moveType = EnemyMoveType.DIAGONAL_BACK_FORTH; break;
-                case 1: this.moveType = EnemyMoveType.SPIRAL; break;
-                case 2: this.moveType = EnemyMoveType.ZIGZAG; break;
+                case 1: this.moveType = EnemyMoveType.ZIGZAG; break;
                 default: this.moveType = EnemyMoveType.SWAY_FORWARD; break;
             }
         } else {
@@ -112,35 +184,46 @@ public class EnemySquad {
 
         // 初始基准位置从屏幕上方外侧进入
         this.baseX = random.nextInt(600) + 100; // X: 100-700
-        this.baseY = -40 - random.nextInt(200);  // 从上面外侧进入
-        this.targetBaseY = random.nextInt(100) + 80; // 到达进入目标Y（屏幕上半区）
+
+        // 关键修复：让“最下面那架(最大offsetY)”也在屏幕外
+        // 最大编队纵向偏移：enemyCount<=5 时约为 3*spacingY=108，保守取 140
+        int maxFormationOffsetY = 140;
+        this.baseY = -SPAWN_OUTSIDE_PADDING_Y - maxFormationOffsetY - random.nextInt(200);
+
+        // 入场目标位置（屏幕上半区偏下，避免太靠前）
+        this.targetBaseY = ENTER_TARGET_Y_MIN + random.nextInt(ENTER_TARGET_Y_MAX - ENTER_TARGET_Y_MIN + 1);
 
         // 同步 double 缓冲
         this.baseXf = this.baseX;
         this.baseYf = this.baseY;
         this.targetBaseYf = this.targetBaseY;
 
+        // 这里不再提前创建敌机对象（避免尚未 spawn 就被渲染/被移动导致“在画面里生成”）
         this.enemies = new ArrayList<>();
-        generateSquadEnemies();
+        this.enemiesCreated = false;
+
+        // 仍然提前生成编队偏移（用于 spawn 时计算最大偏移，保证严格屏幕外）
+        generateFormationOffsetsOnly();
+
+        // 俯冲状态表等在真正创建敌机后再初始化
+        diveMap.clear();
 
         this.phase = Phase.ENTER;
         this.phaseStartTime = System.currentTimeMillis();
+
+        // 初始化速度向量：给每队一个不同的初始方向，避免同步抽搐
+        double a = random.nextDouble() * Math.PI * 2;
+        double baseSp = Math.max(1.2, moveSpeed * 0.55);
+        this.velX = Math.cos(a) * baseSp;
+        this.velY = Math.sin(a) * (baseSp * 0.35);
     }
 
-    // 按编队形状生成小队敌机（同时记录初始偏移）
-    private void generateSquadEnemies() {
-        int spacingX = 46; // X 间距（更自然）
-        int spacingY = 36; // Y 间距（更自然）
-
+    // 仅生成编队槽位偏移，不创建敌机对象
+    private void generateFormationOffsetsOnly() {
+        int spacingX = 46;
+        int spacingY = 36;
         formationOffsets.clear();
 
-        // 更自然的“交错队列”：两列错位排列（类似交错编队/蜂群）
-        // enemyCount: 1-5
-        // slot 0: (0,0)
-        // slot 1: (-spacingX/2, spacingY)
-        // slot 2: ( spacingX/2, spacingY)
-        // slot 3: (-spacingX/2, 2*spacingY)
-        // slot 4: ( spacingX/2, 2*spacingY)
         Point[] stagger = {
                 new Point(0, 0),
                 new Point(-spacingX / 2, spacingY),
@@ -149,21 +232,15 @@ public class EnemySquad {
                 new Point(spacingX / 2, 2 * spacingY)
         };
 
-        // 仍保留你原来的 formation 选择，但让布局更“自然”；
-        // HORIZONTAL/DIAMOND/默认 => 交错队列
-        // VERTICAL => 轻微左右交错的竖列
-        // TRIANGLE => 三角（轻微收紧）
         switch (formation) {
             case VERTICAL:
                 for (int i = 0; i < enemyCount; i++) {
-                    int ox = (i % 2 == 0) ? 0 : spacingX / 3; // 竖列左右轻微错位
+                    int ox = (i % 2 == 0) ? 0 : spacingX / 3;
                     int oy = i * spacingY;
                     formationOffsets.add(new Point(ox, oy));
-                    addEnemy(baseX + ox, baseY + oy);
                 }
                 break;
             case TRIANGLE:
-                // 三角：顶点 + 两侧 + 底部（最多 5）
                 Point[] tri = {
                         new Point(0, 0),
                         new Point(-spacingX / 2, spacingY),
@@ -173,7 +250,6 @@ public class EnemySquad {
                 };
                 for (int i = 0; i < enemyCount; i++) {
                     formationOffsets.add(new Point(tri[i]));
-                    addEnemy(baseX + tri[i].x, baseY + tri[i].y);
                 }
                 break;
             case HORIZONTAL:
@@ -181,9 +257,21 @@ public class EnemySquad {
             default:
                 for (int i = 0; i < enemyCount; i++) {
                     formationOffsets.add(new Point(stagger[i]));
-                    addEnemy(baseX + stagger[i].x, baseY + stagger[i].y);
                 }
                 break;
+        }
+    }
+
+    // 在 spawn 时才真正创建敌机对象
+    private void createEnemiesAtCurrentBase() {
+        if (enemiesCreated) return;
+        enemiesCreated = true;
+
+        enemies.clear();
+        for (Point off : formationOffsets) {
+            int x = baseX + off.x;
+            int y = baseY + off.y;
+            addEnemy(x, y);
         }
 
         // 初始化每架敌机的俯冲状态
@@ -191,6 +279,13 @@ public class EnemySquad {
         for (EnemyAircraft e : enemies) {
             diveMap.put(e, new DiveInfo());
         }
+    }
+
+    // 按编队形状生成小队敌机（同时记录初始偏移）
+    // （已弃用：改为 lazy spawn，在 checkSpawn() 内 createEnemiesAtCurrentBase()）
+    @Deprecated
+    private void generateSquadEnemies() {
+        // no-op
     }
 
     // 添加单架敌机到小队
@@ -203,7 +298,7 @@ public class EnemySquad {
             enemy = new JellyfishAircraft(waveNumber, x, y);
         } else {
             enemy = new EnemyAircraft(
-                    800, 600, moveType, waveNumber, x, y // 传递初始位置，适配小队编队
+                    800, 850, moveType, waveNumber, x, y // 修复：panelHeight 应与游戏面板一致
             );
         }
         enemies.add(enemy);
@@ -213,15 +308,74 @@ public class EnemySquad {
     public void checkSpawn(long waveStartTime) {
         if (!isSpawned && System.currentTimeMillis() - waveStartTime >= spawnDelay) {
             isSpawned = true;
-            spawnTime = System.currentTimeMillis();
             phase = Phase.ENTER;
             phaseStartTime = System.currentTimeMillis();
 
-            // 重新生成/进入时，同步 double 缓冲，避免首帧跳变
+            // 每次真正 spawn 时重新随机一个 X
+            this.baseX = random.nextInt(600) + 100;
             this.baseXf = this.baseX;
-            this.baseYf = this.baseY;
+
+            // 先计算严格屏幕外的 baseY
+            int maxOffsetY = getFormationMaxOffsetY();
+            int enemyH = 44;
+            int minOutsidePx = enemyH * SPAWN_OUTSIDE_ENEMY_HEIGHTS;
+            int extraRandom = random.nextInt(enemyH * 3);
+            this.baseYf = -(minOutsidePx + enemyH + maxOffsetY + extraRandom);
+            this.baseY = (int) this.baseYf;
+
+            // 入场目标位置（更自然）
+            this.targetBaseY = ENTER_TARGET_Y_MIN + random.nextInt(ENTER_TARGET_Y_MAX - ENTER_TARGET_Y_MIN + 1);
             this.targetBaseYf = this.targetBaseY;
+
+            // 每次 spawn 重置入场后缓冲
+            postEnterHoldUntil = 0L;
+
+            // ENTER 阶段速度清零（ENTER 只由插值驱动）
+            this.velX = 0.0;
+            this.velY = 0.0;
+            this.targetVelX = 0.0;
+            this.targetVelY = 0.0;
+
+            // ✅ 关键：现在才真正创建敌机对象（否则 enemies 为空，看不到敌机）
+            this.enemiesCreated = false;
+            createEnemiesAtCurrentBase();
+
+            // 初始化入场插值起点（当前屏幕外位置）
+            enterStartXf = baseXf;
+            enterStartYf = baseYf;
+            enterProgress = 0.0;
+            enterProgressStep = 0.018 + random.nextDouble() * 0.010;
+
+            // ✅ 锁定入场目标点：必须在 targetBaseYf 同步后
+            enterTargetXf = this.baseXf;
+            enterTargetYf = this.targetBaseYf;
+
+
+            // spawn 当帧：把每架敌机坐标同步到“屏幕外”位置
+            for (int slotIndex = 0; slotIndex < enemies.size(); slotIndex++) {
+                EnemyAircraft enemy = enemies.get(slotIndex);
+                if (enemy == null) continue;
+                Point baseOffset = slotIndex < formationOffsets.size() ? formationOffsets.get(slotIndex) : new Point(0, 0);
+
+                int sx = (int) Math.round(baseXf + baseOffset.x);
+                int sy = (int) Math.round(baseYf + baseOffset.y);
+                enemy.setX(sx);
+                enemy.setY(sy);
+
+                if (DEBUG_SPAWN) {
+                    System.out.println("[EnemySquad][spawn] squad=" + squadId + " enemy=" + slotIndex + " xy=(" + sx + "," + sy + ")");
+                }
+            }
         }
+    }
+
+    // 计算当前编队的最大纵向偏移（用于确保整队真正处于屏幕外）
+    private int getFormationMaxOffsetY() {
+        int max = 0;
+        for (Point p : formationOffsets) {
+            if (p != null && p.y > max) max = p.y;
+        }
+        return max;
     }
 
     // 外部可以设置玩家位置，影响俯冲目标
@@ -243,16 +397,19 @@ public class EnemySquad {
             }
 
             Point baseOffset = slotIndex < formationOffsets.size() ? formationOffsets.get(slotIndex) : new Point(0, 0);
-            int targetX = baseX + baseOffset.x;
-            int targetY = baseY + baseOffset.y;
+            int formationX = baseX + baseOffset.x;
+            int formationY = baseY + baseOffset.y;
 
             if (enemy instanceof JellyfishAircraft) {
                 JellyfishAircraft jelly = (JellyfishAircraft) enemy;
-                jelly.setFormationTarget(targetX, targetY);
+                jelly.setFormationTarget(formationX, formationY);
                 jelly.move();
                 continue;
             }
 
+            // =====================
+            // 保留：俯冲 / 正常编队
+            // =====================
             double offsetX = baseOffset.x;
             double offsetY = baseOffset.y;
 
@@ -265,7 +422,6 @@ public class EnemySquad {
                     double t = d.progress;
                     int diveTargetX = d.diveTargetX;
                     int diveTargetY = d.diveTargetY;
-                    // 用 double 插值再 round，减少 int 截断造成的“跳动”
                     offsetX = baseOffset.x * (1 - t) + (diveTargetX - baseXf) * t;
                     offsetY = baseOffset.y * (1 - t) + (diveTargetY - baseYf) * t;
                     if (d.progress >= 1.0) {
@@ -284,8 +440,8 @@ public class EnemySquad {
                 }
             }
 
-            enemy.setX((int) Math.round(baseXf + offsetX));
-            enemy.setY((int) Math.round(baseYf + offsetY));
+            enemy.setX((int) (baseXf + offsetX));
+            enemy.setY((int) (baseYf + offsetY));
 
             if (enemy.getY() > panelHeight + 50 && enemy.isAlive()) {
                 try {
@@ -300,160 +456,6 @@ public class EnemySquad {
         checkAllDead();
     }
 
-    // 更新小队基准位置（按运动类型和阶段）
-    private void updateBasePosition() {
-        long now = System.currentTimeMillis();
-        long phaseElapsed = now - phaseStartTime;
-
-        // 阶段机：ENTER -> PATROL -> ATTACK 循环 -> EXIT
-        switch (phase) {
-            case ENTER: {
-                double enterSpeed = Math.max(1.0, moveSpeed / 2.0);
-                if (baseYf < targetBaseYf) baseYf += enterSpeed;
-                // ENTER 阶段不再叠加额外的 baseXf 大摆动，避免与 moveType 叠加造成跳变
-                if (baseYf >= targetBaseYf) {
-                    phase = Phase.PATROL;
-                    phaseStartTime = now;
-                }
-                break;
-            }
-            case PATROL:
-                // PATROL 阶段只做很轻微的纵向漂移，让 moveType 来负责“轨迹风格”
-                baseYf += Math.cos(now / 1200.0) * 0.20;
-                if (phaseElapsed > 2000 + random.nextInt(2000)) {
-                    beginAttackWave();
-                    phase = Phase.ATTACK;
-                    phaseStartTime = now;
-                }
-                break;
-            case ATTACK:
-                // ATTACK 阶段主要向下推进，横向由 moveType 决定
-                baseYf += Math.max(1.0, moveSpeed / 3.0);
-                boolean anyDiving = diveMap.values().stream().anyMatch(di -> di.isDiving);
-                if (phaseElapsed > 3000 + random.nextInt(2000) || !anyDiving) {
-                    phase = Phase.REGROUP;
-                    phaseStartTime = now;
-                    diveMap.values().forEach(di -> {
-                        if (di.isDiving && !di.returning) {
-                            di.returning = true;
-                            di.progress = 0;
-                        }
-                    });
-                }
-                break;
-            case REGROUP:
-                // REGROUP 阶段保持纵向基本稳定
-                boolean anyActive = diveMap.values().stream().anyMatch(di -> di.isDiving);
-                if (!anyActive || phaseElapsed > 2000) {
-                    phase = random.nextDouble() < 0.2 ? Phase.EXIT : Phase.PATROL;
-                    phaseStartTime = now;
-                }
-                break;
-            case EXIT:
-                baseYf += Math.max(2.0, moveSpeed / 2.0);
-                if (baseYf > panelHeight + 50) {
-                    enemies.forEach(e -> {
-                        e.setY((int) Math.round(baseYf + 200));
-                        if (e.isAlive()) {
-                            try {
-                                e.hit(9999);
-                            } catch (Throwable ignore) {
-                            }
-                        }
-                    });
-                }
-                break;
-        }
-
-        // 根据 moveType 增强基准位移动（保留原有风格）
-        switch (moveType) {
-            case HOVER:
-                baseXf += Math.sin((now / 700.0) + phaseOffset) * 1.2;
-                baseYf += Math.cos((now / 900.0) + phaseOffset) * 0.6;
-                break;
-            case LEFT_RIGHT:
-                baseXf += moveDirection * (double) moveSpeed;
-                if (baseXf <= boundary || baseXf >= panelWidth - boundary) moveDirection *= -1;
-                break;
-            case DIAGONAL_BACK_FORTH: {
-                // 让斜向移动更“聪明”：速度稍慢 + 轻微摆动扰动
-                double sp = Math.max(1.4, moveSpeed * 0.75);
-                baseXf += moveDirection * sp;
-                baseYf += moveDirection * (sp * 0.70);
-                // 小扰动，避免呆板
-                baseXf += Math.sin((now / 280.0) + phaseOffset) * 0.35;
-                baseYf += Math.cos((now / 360.0) + phaseOffset) * 0.18;
-
-                if (baseXf <= boundary || baseXf >= panelWidth - boundary ||
-                        baseYf <= boundary || baseYf >= 300) moveDirection *= -1;
-                break;
-            }
-            case SPIRAL:
-                spiralAngle += 0.07 * moveSpeed;
-                baseXf += Math.cos(spiralAngle) * Math.max(0.8, moveSpeed / 2.2);
-                baseYf += Math.sin(spiralAngle) * Math.max(0.8, moveSpeed / 2.2) + 0.9;
-                if (baseXf <= boundary || baseXf >= panelWidth - boundary) spiralAngle += Math.PI;
-                if (baseYf >= 350) baseYf = 350;
-                break;
-            case SWAY_FORWARD:
-                baseXf += Math.sin((now / 520.0) + phaseOffset) * moveSpeed * 1.7;
-                baseYf += moveSpeed / 4.5;
-                baseXf = Math.max(boundary, Math.min(panelWidth - boundary, baseXf));
-                break;
-            case ZIGZAG:
-                // 原实现是每30帧硬切换方向，会产生明显“顿挫/抽搐”
-                // 改成时间驱动的平滑折线摆动（视觉更智能也更顺滑）
-                baseXf += Math.sin((now / 260.0) + phaseOffset) * moveSpeed * 2.0;
-                baseYf += moveSpeed / 2.6;
-                if (baseYf >= 350) baseYf = 350;
-                break;
-        }
-
-        // clamp（double）
-        baseXf = Math.max(boundary, Math.min(panelWidth - boundary, baseXf));
-        baseYf = Math.max(-200, Math.min(panelHeight + 300, baseYf));
-
-        // 关键：普通阶段不允许走到屏幕底部不可攻击区（除非 EXIT 撤退/俯冲目标）
-        if (phase != Phase.EXIT) {
-            baseYf = Math.min(baseYf, COMBAT_MAX_Y);
-        }
-
-        // 同步回 int（唯一一次 round）
-        baseX = (int) Math.round(baseXf);
-        baseY = (int) Math.round(baseYf);
-    }
-
-    // 发起一次攻击浪：随机挑选若干架敌机进行俯冲
-    private void beginAttackWave() {
-        // 选择1到min(3,alive)架敌机进行俯冲
-        List<EnemyAircraft> alive = new ArrayList<>();
-        for (EnemyAircraft e : enemies) if (e.isAlive()) alive.add(e);
-        if (alive.isEmpty()) return;
-
-        int maxDivers = Math.min(3, alive.size());
-        int divers = 1 + random.nextInt(maxDivers);
-        for (int i = 0; i < divers; i++) {
-            EnemyAircraft e = alive.get(random.nextInt(alive.size()));
-            DiveInfo di = diveMap.get(e);
-            if (di != null && !di.isDiving) {
-                di.isDiving = true;
-                di.returning = false;
-                di.progress = 0;
-                di.progressStep = 0.012 + random.nextDouble() * 0.008;
-                di.diveTargetX = playerX + random.nextInt(120) - 60;
-
-                // 俯冲目标Y：限制到 DIVE_MAX_Y，避免贴底导致玩家打不到
-                int targetY = playerY + 20 + random.nextInt(80);
-                di.diveTargetY = Math.min(targetY, DIVE_MAX_Y);
-            }
-        }
-    }
-
-    // 检查小队是否全灭
-    private void checkAllDead() {
-        isAllDead = enemies.stream().noneMatch(EnemyAircraft::isAlive);
-    }
-
     // 更新小队敌机子弹
     public void updateSquadBullets() {
         if (!isSpawned) return;
@@ -464,8 +466,280 @@ public class EnemySquad {
         }
     }
 
+    // =====================
+    // 小队基准位更新（无脱队版）
+    // 目标：敌机从屏幕外进入 -> 上半区巡航 -> 偶尔俯冲/推进 -> 撤退
+    // =====================
+    private void updateBasePosition() {
+        long now = System.currentTimeMillis();
+        long elapsed = now - phaseStartTime;
+
+        switch (phase) {
+            case ENTER: {
+                enterProgress += enterProgressStep;
+                if (enterProgress > 1.0) enterProgress = 1.0;
+
+                double t = enterProgress;
+                double smoothT = t * t * (3 - 2 * t); // smoothstep
+
+                double curve = Math.sin(Math.PI * smoothT) * ENTER_CURVE_AMPLITUDE;
+
+                // 使用锁定的目标点，避免最后一帧“目标变了”导致瞬移
+                double targetX = enterTargetXf;
+                double targetY = enterTargetYf;
+
+                baseXf = enterStartXf + (targetX - enterStartXf) * smoothT;
+                baseYf = enterStartYf + (targetY - enterStartYf) * smoothT + curve;
+
+                // 不允许低于目标（避免穿过后再回拉造成抽搐）
+                if (baseYf > targetY) baseYf = targetY;
+
+                // 入场最后一帧强制精确落点（防止取整/曲线造成的 “差 1px 后突然跳”）
+                if (enterProgress >= 1.0) {
+                    baseXf = targetX;
+                    baseYf = targetY;
+                }
+
+                baseX = (int) Math.round(baseXf);
+                baseY = (int) Math.round(baseYf);
+
+                if (elapsed >= ENTER_MIN_TIME_MS && baseYf >= 0 && enterProgress >= 1.0) {
+                    // 切到巡航前，保证基准点已稳定在目标点
+                    baseXf = targetX;
+                    baseYf = targetY;
+                    baseX = (int) Math.round(baseXf);
+                    baseY = (int) Math.round(baseYf);
+
+                    phase = Phase.PATROL;
+                    phaseStartTime = now;
+
+                    // 入场后短暂停顿，避免 PATROL 第一帧立即下移
+                    postEnterHoldUntil = now + POST_ENTER_HOLD_MS;
+
+                    // 初始化速度为 0
+                    velX = 0.0;
+                    velY = 0.0;
+                    targetVelX = 0.0;
+                    targetVelY = 0.0;
+                }
+                return;
+            }
+            case PATROL: {
+                // 入场后短暂停顿期：保持在位
+                if (now < postEnterHoldUntil) {
+                    baseX = (int) Math.round(baseXf);
+                    baseY = (int) Math.round(baseYf);
+                    return;
+                }
+
+                // 上半区轻微漂移
+                targetVelY = 0.15;
+                if (elapsed > 2000 + random.nextInt(2000)) {
+                    beginAttackWave();
+                    phase = Phase.ATTACK;
+                    phaseStartTime = now;
+                }
+                break;
+            }
+            case ATTACK: {
+                // 缓慢向下推进（让编队有压迫感）
+                targetVelY = Math.max(0.9, moveSpeed * 0.40);
+                boolean anyDiving = diveMap.values().stream().anyMatch(di -> di.isDiving);
+                if (elapsed > 3500 || !anyDiving) {
+                    phase = Phase.REGROUP;
+                    phaseStartTime = now;
+                    // 让未回收的俯冲进入回收阶段
+                    diveMap.values().forEach(di -> {
+                        if (di.isDiving && !di.returning) {
+                            di.returning = true;
+                            di.progress = 0;
+                        }
+                    });
+                }
+                break;
+            }
+            case REGROUP: {
+                // 回到巡航高度区间
+                targetVelY = 0.10;
+                boolean anyActive = diveMap.values().stream().anyMatch(di -> di.isDiving);
+                if (!anyActive || elapsed > 1800) {
+                    phase = random.nextDouble() < 0.2 ? Phase.EXIT : Phase.PATROL;
+                    phaseStartTime = now;
+                }
+                break;
+            }
+            case EXIT: {
+                // 撤退：向下离场
+                targetVelY = Math.max(2.2, moveSpeed * 0.65);
+                targetVelX *= 0.90;
+                break;
+            }
+        }
+
+        // moveType 决定横向移动趋势（无脱队版，保持克制）
+        // 入场时不应用复杂横向趋势，避免一进场就“抖”
+        if (phase != Phase.ENTER) {
+            switch (moveType) {
+                case LEFT_RIGHT: {
+                    double sp = Math.max(1.2, moveSpeed * 0.55);
+                    if (Math.abs(targetVelX) < 0.1) targetVelX = (random.nextBoolean() ? 1 : -1) * sp;
+                    targetVelX = Math.copySign(sp, targetVelX);
+                    break;
+                }
+                case DIAGONAL_BACK_FORTH: {
+                    double sp = Math.max(1.05, moveSpeed * 0.42);
+                    if (Math.abs(targetVelX) < 0.1) targetVelX = (random.nextBoolean() ? 1 : -1) * sp;
+                    targetVelX = Math.copySign(sp, targetVelX);
+                    targetVelY += 0.08;
+                    break;
+                }
+                case ZIGZAG: {
+                    double sp = Math.max(1.25, moveSpeed * 0.58);
+                    targetVelX = Math.sin((now / 260.0) + phaseOffset) * sp;
+                    break;
+                }
+                case SWAY_FORWARD: {
+                    targetVelX = Math.sin((now / 520.0) + phaseOffset) * (moveSpeed * 0.55);
+                    targetVelY += moveSpeed / 5.0;
+                    break;
+                }
+                case HOVER:
+                default:
+                    targetVelX *= 0.90;
+                    break;
+            }
+        }
+
+        // 平滑速度
+        velX = velX * (1.0 - VEL_SMOOTH) + targetVelX * VEL_SMOOTH;
+        velY = velY * (1.0 - VEL_SMOOTH) + targetVelY * VEL_SMOOTH;
+
+        // 轻微扰动：入场阶段禁用扰动，避免敌机在屏幕外被“抖”到 y>=0
+        double wobbleX = 0.0;
+        double wobbleY = 0.0;
+        if (phase != Phase.EXIT && phase != Phase.ENTER) {
+            wobbleX = Math.sin((now / 520.0) + phaseOffset) * 0.9;
+            wobbleY = Math.cos((now / 900.0) + phaseOffset) * 0.35;
+        }
+
+        baseXf += velX + wobbleX;
+        baseYf += velY + wobbleY;
+
+        // 边界反弹：入场阶段不做 Y 方向反弹/夹取到 roamMinY，允许其从很负的 y 平滑推进
+        if (now - lastBounceTime > BOUNCE_COOLDOWN_MS) {
+            boolean bounced = false;
+            if (baseXf < boundary) {
+                baseXf = boundary + 0.8;
+                velX = Math.abs(velX);
+                targetVelX = Math.abs(targetVelX);
+                bounced = true;
+            } else if (baseXf > panelWidth - boundary) {
+                baseXf = panelWidth - boundary - 0.8;
+                velX = -Math.abs(velX);
+                targetVelX = -Math.abs(targetVelX);
+                bounced = true;
+            }
+
+            if (phase != Phase.EXIT && phase != Phase.ENTER) {
+                double minY = Math.max(-200, roamMinY);
+                double maxY = Math.min(COMBAT_MAX_Y, roamMaxY);
+                if (baseYf < minY) {
+                    baseYf = minY + 0.8;
+                    velY = Math.abs(velY);
+                    targetVelY = Math.abs(targetVelY);
+                    bounced = true;
+                } else if (baseYf > maxY) {
+                    baseYf = maxY - 0.8;
+                    velY = -Math.abs(velY) * 0.75;
+                    targetVelY = -Math.abs(targetVelY) * 0.55;
+                    bounced = true;
+                }
+            }
+
+            if (bounced) lastBounceTime = now;
+        }
+
+        // 兜底 clamp
+        baseXf = Math.max(boundary, Math.min(panelWidth - boundary, baseXf));
+
+        // 入场阶段允许更高（更负）的 y；不要 clamp 到 -200
+        if (phase == Phase.ENTER) {
+            baseYf = Math.min(panelHeight + 300, baseYf);
+        } else {
+            baseYf = Math.max(-200, Math.min(panelHeight + 300, baseYf));
+        }
+
+        if (phase != Phase.EXIT) baseYf = Math.min(baseYf, COMBAT_MAX_Y);
+
+        baseX = (int) baseXf;
+        baseY = (int) baseYf;
+
+        // EXIT 阶段越界则直接判定离场
+        if (phase == Phase.EXIT && baseYf > panelHeight + 70) {
+            for (EnemyAircraft e : enemies) {
+                if (e != null && e.isAlive()) {
+                    try { e.hit(9999); } catch (Throwable ignore) {}
+                }
+            }
+        }
+    }
+
+    // 检查小队是否全灭
+    private void checkAllDead() {
+        isAllDead = enemies.stream().noneMatch(EnemyAircraft::isAlive);
+    }
+
+    // 发起一次攻击浪：随机挑选若干架敌机进行俯冲（无脱队版）
+    private void beginAttackWave() {
+        // 选择1到min(3,alive)架敌机进行俯冲（不包含 Jellyfish）
+        List<EnemyAircraft> alive = new ArrayList<>();
+        for (EnemyAircraft e : enemies) {
+            if (e == null || !e.isAlive()) continue;
+            if (e instanceof JellyfishAircraft) continue;
+            alive.add(e);
+        }
+        if (alive.isEmpty()) return;
+
+        int maxDivers = Math.min(3, alive.size());
+        int divers = 1 + random.nextInt(maxDivers);
+
+        for (int i = 0; i < divers; i++) {
+            EnemyAircraft e = alive.get(random.nextInt(alive.size()));
+            DiveInfo di = diveMap.get(e);
+            if (di == null) {
+                di = new DiveInfo();
+                diveMap.put(e, di);
+            }
+            if (di.isDiving) continue;
+
+            di.isDiving = true;
+            di.returning = false;
+            di.progress = 0.0;
+
+            // 更平滑的俯冲：步进更小一点，整体时间更长，视觉更像“曲线俯冲”
+            di.progressStep = 0.010 + random.nextDouble() * 0.006;
+
+            // 按你的要求：去掉“同步玩家位置”。
+            // 俯冲目标改为：基于当前编队位置向下推进 + 水平侧移（更像雷霆战机的压迫俯冲）
+            int baseCenterX = (int) Math.round(baseXf);
+            int baseCenterY = (int) Math.round(baseYf);
+
+            int side = random.nextBoolean() ? 1 : -1;
+            int lateral = (70 + random.nextInt(120)) * side; // 70~189 像素侧移
+            di.diveTargetX = Math.max(boundary, Math.min(panelWidth - boundary, baseCenterX + lateral));
+
+            int depth = 260 + random.nextInt(200); // 向下推进深度
+            int targetY = baseCenterY + depth;
+            di.diveTargetY = Math.min(targetY, DIVE_MAX_Y);
+        }
+    }
+
     // Getter & Setter
-    public List<EnemyAircraft> getEnemies() { return enemies; }
+    public List<EnemyAircraft> getEnemies() {
+        // 未 spawn/未创建时不返回任何敌机，避免渲染/碰撞等逻辑误用
+        if (!isSpawned || !enemiesCreated) return java.util.Collections.emptyList();
+        return enemies;
+    }
     public boolean isSpawned() { return isSpawned; }
     public boolean isAllDead() { return isAllDead; }
     public int getSquadId() { return squadId; }
@@ -490,4 +764,8 @@ public class EnemySquad {
             diveTargetY = 0;
         }
     }
+
+    // 入场结束到巡航开始之间的短暂停顿（防止切到 PATROL 后第一帧立刻下移造成“到位瞬移”）
+    private static final long POST_ENTER_HOLD_MS = 180;
+    private long postEnterHoldUntil = 0L;
 }

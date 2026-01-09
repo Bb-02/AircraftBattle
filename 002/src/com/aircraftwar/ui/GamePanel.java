@@ -65,6 +65,9 @@ public class GamePanel extends JPanel implements Runnable {
     // 在 GamePanel 类内，添加字段并在构造器中加载图片
     private BufferedImage backgroundImage;
 
+    // 仅用于调试：打印一次真实面板尺寸
+    private boolean printedPanelSize = false;
+
     public GamePanel() {
         // 初始化面板
         setPreferredSize(new Dimension(800, 850));
@@ -184,6 +187,10 @@ public class GamePanel extends JPanel implements Runnable {
         resetInputStates();
 
         currentWave = new Wave(currentWaveNumber);
+
+        // 调试：打印创建波次时的面板尺寸（如果为0，说明尺寸尚未布局完成）
+        System.out.println("[Wave] create wave=" + currentWaveNumber + " panel=" + getWidth() + "x" + getHeight());
+
         // 打印波次信息（控制台）
         System.out.println("===== 无尽模式 - 第" + currentWaveNumber + "波 =====");
         System.out.println("小队数量：" + currentWave.getSquads().size());
@@ -245,8 +252,14 @@ public class GamePanel extends JPanel implements Runnable {
 
     // 更新游戏逻辑
     private void updateGame() {
+        if (!printedPanelSize) {
+            printedPanelSize = true;
+            System.out.println("[GamePanel] size=" + getWidth() + "x" + getHeight() + " preferred=" + getPreferredSize());
+        }
+
         // 控制玩家移动
         controlPlayerMovement();
+
 
         // 更新当前波次（小队移动+子弹)
         currentWave.updateWave();
@@ -338,7 +351,9 @@ public class GamePanel extends JPanel implements Runnable {
                     // 添加爆炸效果
                     explosions.add(new Explosion(player.getX(), player.getY()));
                     EventBus.getDefault().post(new SoundEvent("explode", 1.0f));
-                    break;
+
+                    // 关键：受击后立刻无敌，本帧不再继续处理更多子弹/碰撞，防止“堆子弹秒杀”
+                    return;
                 }
             }
         }
@@ -346,12 +361,13 @@ public class GamePanel extends JPanel implements Runnable {
         // 3. 敌机碰撞玩家
         for (EnemyAircraft enemy : allEnemies) {
             if (enemy.isAlive() && enemy.getCollisionRect().intersects(player.getCollisionRect())) {
-                // 未被拦截，正常扣血
                 player.hit(1); // 只扣1血，和敌机子弹一致
                 enemy.hit(1);
                 explosions.add(new Explosion(player.getX(), player.getY()));
                 EventBus.getDefault().post(new SoundEvent("explode", 1.0f));
-                break;
+
+                // 同理：撞击后本帧也停止后续碰撞结算
+                return;
             }
         }
     }
@@ -555,6 +571,12 @@ public class GamePanel extends JPanel implements Runnable {
         Graphics2D g2d = (Graphics2D) g;
         g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
 
+        if (!printedPanelSize) {
+            printedPanelSize = true;
+            Insets in = getInsets();
+            System.out.println("[GamePanel] size=" + getWidth() + "x" + getHeight() + " insets=" + in);
+        }
+
         // 开启文字抗锯齿，避免中文显示模糊
         g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
         if (backgroundImage != null) {
@@ -565,6 +587,8 @@ public class GamePanel extends JPanel implements Runnable {
             g2d.setColor(Color.BLACK);
             g2d.fillRect(0, 0, getWidth(), getHeight());
         }
+
+
         if (gameState == GAME_RUNNING) {
             // 绘制玩家
             player.draw(g);

@@ -23,15 +23,20 @@ public class Wave {
         this.isWaveOver = false;
 
         // 生成本波小队列表（波次越高，小队数越多）
-        int squadCount = 2 + (waveNumber / 3); // 第1波2队，每3波+1队（最高6队）
+        int squadCount = 2 + (waveNumber / 3);
+        if (waveNumber <= 1) squadCount = 3; // 开局更紧凑一点
         if (squadCount > 6) squadCount = 6;
         this.squads = new ArrayList<>();
 
-        // 小队按时间间隔生成（每队间隔2-5秒）
+        // 小队按时间间隔生成（开局更快，后续保持随机）
         long spawnDelay = 0;
         for (int i = 0; i < squadCount; i++) {
-            spawnDelay += (2000 + (long)(Math.random() * 3000)); // 2-5秒间隔
-            squads.add(new EnemySquad(i+1, waveNumber, spawnDelay));
+            if (waveNumber <= 1) {
+                spawnDelay += (1100 + (long) (Math.random() * 1000)); // 1.1-2.1s
+            } else {
+                spawnDelay += (1700 + (long) (Math.random() * 2400)); // 1.7-4.1s（略快于原来的2-5s）
+            }
+            squads.add(new EnemySquad(i + 1, waveNumber, spawnDelay));
         }
     }
 

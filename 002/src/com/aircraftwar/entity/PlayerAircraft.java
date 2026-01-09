@@ -166,11 +166,19 @@ public class PlayerAircraft extends Aircraft {
 
     @Override
     public void hit(int damage) {
+        // 已经无敌：直接忽略
         if (invincible) return;
+
+        // 关键：先立刻进入无敌，再处理扣血。
+        // 这样同一帧里如果又发生多次碰撞，后续 hit() 会被立即拦截。
+        invincible = true;
+        invincibleUntil = System.currentTimeMillis() + INVINCIBLE_MS;
+
         super.hit(damage);
-        if (isAlive()) {
-            invincible = true;
-            invincibleUntil = System.currentTimeMillis() + INVINCIBLE_MS;
+
+        // 如果被打死了，无敌也就无所谓了；保持字段即可
+        if (!isAlive()) {
+            // 可选：这里不需要额外处理
         }
     }
 
