@@ -37,6 +37,10 @@ public class PlayerAircraft extends Aircraft {
     private static final int MAX_SPEED_LEVEL = 3;
     private static final int SPEED_PER_LEVEL = 1; // 每级增加的速度（可调）
 
+    // ===== 受击反馈（视觉） =====
+    private long lastHitAtMs = 0L;
+    private static final long HIT_FEEDBACK_MS = 220L; // 受击反馈持续时间
+
     public PlayerAircraft(int x, int y) {
         super(x, y, 5, 3, PLAYER_WIDTH, PLAYER_HEIGHT);
         this.bullets = new ArrayList<>();
@@ -171,6 +175,9 @@ public class PlayerAircraft extends Aircraft {
         // 已经无敌：直接忽略
         if (invincible) return;
 
+        // 记录受击时间（用于 UI/屏幕震动/闪烁）
+        lastHitAtMs = System.currentTimeMillis();
+
         // 关键：先立刻进入无敌，再处理扣血。
         // 这样同一帧里如果又发生多次碰撞，后续 hit() 会被立即拦截。
         invincible = true;
@@ -186,6 +193,10 @@ public class PlayerAircraft extends Aircraft {
 
     public boolean isInvincible() {
         return invincible;
+    }
+
+    public boolean isRecentlyHit() {
+        return System.currentTimeMillis() - lastHitAtMs <= HIT_FEEDBACK_MS;
     }
 
     public void moveUp() {

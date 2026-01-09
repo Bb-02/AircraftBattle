@@ -75,6 +75,9 @@ public class GamePanel extends JPanel implements Runnable {
     private static final long TRANSITION_MS = 520L; // 转场总时长（ms）
     private boolean transitionToGame = false;
 
+    // ===== 受击反馈（屏幕震动/红屏） =====
+    private static final int HIT_SHAKE_PX = 6;
+
     public GamePanel() {
         // 初始化面板
         setPreferredSize(new Dimension(800, 850));
@@ -303,6 +306,9 @@ public class GamePanel extends JPanel implements Runnable {
             System.out.println("[GamePanel] size=" + getWidth() + "x" + getHeight() + " preferred=" + getPreferredSize());
         }
 
+        // currentWave/player 为空时直接跳过（开始界面/转场阶段不会走到这里，但加一层保险更稳）
+        if (player == null || currentWave == null) return;
+
         // 控制玩家移动
         controlPlayerMovement();
 
@@ -311,12 +317,11 @@ public class GamePanel extends JPanel implements Runnable {
         currentWave.updateWave();
 
         // 更新玩家状态（新增：处理无敌计时）
-        if (player != null) player.update();
+        player.update();
 
         // 更新玩家子弹
         if (shootPressed) {
             player.shoot();
-            // 发布发射事件 + 播放音效事件（可由 SoundManager 处理）
             EventBus.getDefault().post(new FireEvent(0, "basic", player.getX(), player.getY()));
             EventBus.getDefault().post(new SoundEvent("shoot", 1.0f));
         }
@@ -390,8 +395,8 @@ public class GamePanel extends JPanel implements Runnable {
             while (enemyBulletIterator.hasNext()) {
                 IBullet eBullet = enemyBulletIterator.next();
                 if (eBullet.isAlive() && eBullet.getCollisionRect().intersects(player.getCollisionRect())) {
-                    // 玩家扣血（波次越高，扣血越多）
-                    player.hit(currentWaveNumber / 2 + 1);
+                    // 玩家扣血：固定每次 1 点，避免出现“单次命中扣 2HP”
+                    player.hit(1);
                     eBullet.setAlive(false);
                     enemyBulletIterator.remove();
                     // 添加爆炸效果
@@ -615,7 +620,15 @@ public class GamePanel extends JPanel implements Runnable {
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);
         Graphics2D g2d = (Graphics2D) g;
-        g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+
+        // ===== 受击反馈：屏幕轻微震动（只在游戏运行中） =====
+        int shakeX = 0;
+        int shakeY = 0;
+        if (gameState == GAME_RUNNING && player != null && player.isRecentlyHit()) {
+            shakeX = (int) (Math.random() * (HIT_SHAKE_PX * 2 + 1)) - HIT_SHAKE_PX;
+            shakeY = (int) (Math.random() * (HIT_SHAKE_PX * 2 + 1)) - HIT_SHAKE_PX;
+            g2d.translate(shakeX, shakeY);
+        }
 
         if (!printedPanelSize) {
             printedPanelSize = true;
@@ -752,7 +765,28 @@ public class GamePanel extends JPanel implements Runnable {
             // 玩家生命值（使用加粗中文字体）
             Font hpFont = chineseBoldFont != null ? chineseBoldFont.deriveFont(Font.BOLD, 20f) : new Font("微软雅黑", Font.BOLD, 20);
             g.setFont(hpFont);
-            g.drawString("HP: " + player.getHp(), getWidth() - 80, 30);
+
+            // 受击：HP 文字短暂变红+抖动
+            int hpDx = 0;
+            int hpDy = 0;
+            if (player != null && player.isRecentlyHit()) {
+                g.setColor(new Color(255, 90, 90));
+                hpDx = (int) (Math.random() * 5) - 2;
+                hpDy = (int) (Math.random() * 5) - 2;
+            } else {
+                g.setColor(Color.WHITE);
+            }
+            g.drawString("HP: " + player.getHp(), getWidth() - 80 + hpDx, 30 + hpDy);
+
+            // 受击红屏遮罩（短暂）
+            if (player != null && player.isRecentlyHit()) {
+                Composite old = g2d.getComposite();
+                g2d.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.22f));
+                g2d.setColor(new Color(255, 0, 0));
+                // 注意：此时可能已 translate，直接画满面板即可
+                g2d.fillRect(-HIT_SHAKE_PX, -HIT_SHAKE_PX, getWidth() + HIT_SHAKE_PX * 2, getHeight() + HIT_SHAKE_PX * 2);
+                g2d.setComposite(old);
+            }
 
         } else if (gameState == GAME_OVER) {
             // 绘制游戏结束标题
@@ -791,10 +825,15 @@ public class GamePanel extends JPanel implements Runnable {
 
             // 绘制重启提示（中文）
             g2d.setFont(chineseFont);
-            String restartText = "按 R 键重新开始";
+            String restartText = "按 R 键开始新游戏";
             int restartWidth = g2d.getFontMetrics().stringWidth(restartText);
             int restartX = (getWidth() - restartWidth) / 2;
             g2d.drawString(restartText, restartX, getHeight()/2 + 50 + yOffset + 30);
+        }
+
+        // 还原 translate，避免影响 Swing 后续绘制
+        if (shakeX != 0 || shakeY != 0) {
+            g2d.translate(-shakeX, -shakeY);
         }
     }
 
