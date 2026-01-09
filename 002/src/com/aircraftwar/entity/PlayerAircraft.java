@@ -1,8 +1,8 @@
 package com.aircraftwar.entity;
 
 import com.aircraftwar.factory.ProjectileFactory;
-import com.aircraftwar.entity.IBullet;
 import com.aircraftwar.util.ImageUtil;
+
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
@@ -25,14 +25,22 @@ public class PlayerAircraft extends Aircraft {
     private long invincibleUntil = 0L;
     private static final long INVINCIBLE_MS = 1000L; // 1秒无敌
 
-    // 升级相关（简易实现）
-    private boolean shieldActive = false;
-    private int fireLevel = 1; // lv1..lv3, 初始 lv1
+    // 升级相关：弹道等级 lv1..lv3, 初始 lv1
+    private int fireLevel = 1;
+    private static final int MAX_FIRE_LEVEL = 3;
+
+    // 升级相关：移速等级 lv0..lv3（初始lv0，每升一级更快）
+    private int speedLevel = 0;
+    private final int baseSpeed;
+    private static final int MAX_SPEED_LEVEL = 3;
+    private static final int SPEED_PER_LEVEL = 1; // 每级增加的速度（可调）
 
     public PlayerAircraft(int x, int y) {
         super(x, y, 5, 3, PLAYER_WIDTH, PLAYER_HEIGHT);
         this.bullets = new ArrayList<>();
         this.lastShootTime = System.currentTimeMillis();
+        this.baseSpeed = this.speed;
+
         // 加载玩家飞机图片 + 日志
         System.out.println("[PlayerAircraft] 开始加载 PlayerPlane.png");
         this.playerImage = ImageUtil.loadImage("PlayerPlane.png");
@@ -63,7 +71,6 @@ public class PlayerAircraft extends Aircraft {
                 bullets.add(b);
             }
             lastShootTime = currentTime;
-            // AudioUtil.playShootSound(); // 保留音效（如有）
         }
     }
 
@@ -78,7 +85,7 @@ public class PlayerAircraft extends Aircraft {
         }
     }
 
-    // 新增：每帧更新，处理无敌时长结束
+    // 每帧更新：处理无敌时长结束
     public void update() {
         if (invincible && System.currentTimeMillis() > invincibleUntil) {
             invincible = false;
@@ -87,83 +94,80 @@ public class PlayerAircraft extends Aircraft {
 
     @Override
     public void draw(Graphics g) {
-        if (isAlive()) {
-            // 核心修改：绘制图片替代矩形
-            Graphics2D g2d = (Graphics2D) g;
-            ImageUtil.drawImage(g2d, playerImage, x, y, PLAYER_WIDTH, PLAYER_HEIGHT);
+        if (!isAlive()) return;
 
-            // 若处于无敌状态，绘制金色光圈
-            if (invincible) {
-                // 使用半透明的金色并适当描边
-                Composite oldComp = g2d.getComposite();
-                Stroke oldStroke = g2d.getStroke();
-                Color oldColor = g2d.getColor();
+        Graphics2D g2d = (Graphics2D) g;
+        ImageUtil.drawImage(g2d, playerImage, x, y, PLAYER_WIDTH, PLAYER_HEIGHT);
 
-                g2d.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.75f));
-                g2d.setColor(new Color(255, 215, 0)); // 金色
-                g2d.setStroke(new BasicStroke(4f));
+        // 无敌期间渲染金色光圈
+        if (invincible) {
+            Composite oldComp = g2d.getComposite();
+            Stroke oldStroke = g2d.getStroke();
+            Color oldColor = g2d.getColor();
 
-                int pad = Math.max(PLAYER_WIDTH, PLAYER_HEIGHT) / 4;
-                int ox = x - pad;
-                int oy = y - pad;
-                int ow = PLAYER_WIDTH + pad * 2;
-                int oh = PLAYER_HEIGHT + pad * 2;
-                g2d.drawOval(ox, oy, ow, oh);
+            g2d.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.75f));
+            g2d.setColor(new Color(255, 215, 0));
+            g2d.setStroke(new BasicStroke(4f));
 
-                // 更外层的柔和光晕
-                g2d.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.35f));
-                g2d.setStroke(new BasicStroke(10f));
-                g2d.drawOval(ox - 3, oy - 3, ow + 6, oh + 6);
+            int pad = Math.max(PLAYER_WIDTH, PLAYER_HEIGHT) / 4;
+            int ox = x - pad;
+            int oy = y - pad;
+            int ow = PLAYER_WIDTH + pad * 2;
+            int oh = PLAYER_HEIGHT + pad * 2;
+            g2d.drawOval(ox, oy, ow, oh);
 
-                // 恢复画笔状态
-                g2d.setComposite(oldComp);
-                g2d.setStroke(oldStroke);
-                g2d.setColor(oldColor);
-            }
+            g2d.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.35f));
+            g2d.setStroke(new BasicStroke(10f));
+            g2d.drawOval(ox - 3, oy - 3, ow + 6, oh + 6);
 
-            // 绘制子弹（原有逻辑不变）
-            for (IBullet bullet : bullets) {
-                bullet.render(g);
-            }
+            g2d.setComposite(oldComp);
+            g2d.setStroke(oldStroke);
+            g2d.setColor(oldColor);
+        }
+
+        // 绘制子弹
+        for (IBullet bullet : bullets) {
+            bullet.render(g);
         }
     }
 
     /**
-     * 增加火力（缩短射击间隔），有上限
+     * 增加火力等级：lv1 -> lv2(2发) -> lv3(3发)
      */
     public void increaseFirePower() {
-        if (fireLevel >= 3) return;
+        if (fireLevel >= MAX_FIRE_LEVEL) return;
         fireLevel++;
     }
 
+    public int getFireLevel() {
+        return fireLevel;
+    }
+
+    public int getMaxFireLevel() {
+        return MAX_FIRE_LEVEL;
+    }
+
     /**
-     * 增加速度
+     * 增加速度：lv0 -> lv1 -> lv2 -> lv3
      */
     public void increaseSpeed() {
-        this.speed += 1; // 简单增加1
+        if (speedLevel >= MAX_SPEED_LEVEL) return;
+        speedLevel++;
+        this.speed = baseSpeed + speedLevel * SPEED_PER_LEVEL;
     }
 
-    /**
-     * 添加一次性盾，下一次受击消耗盾并免伤
-     */
-    public void addShield() {
-        this.shieldActive = true;
+    public int getSpeedLevel() {
+        return speedLevel;
     }
 
-    public boolean hasShield() { return shieldActive; }
+    public int getMaxSpeedLevel() {
+        return MAX_SPEED_LEVEL;
+    }
 
-    // 覆盖 hit：在无敌期间忽略伤害，若有盾则消耗盾并忽略伤害，受伤后进入短暂无敌
     @Override
     public void hit(int damage) {
-        if (invincible) return; // 无敌期间忽略伤害
-        if (shieldActive) {
-            // 消耗盾
-            shieldActive = false;
-            // 可触发盾被吸收音效
-            return;
-        }
+        if (invincible) return;
         super.hit(damage);
-        // 如果仍然存活则开启短暂无敌
         if (isAlive()) {
             invincible = true;
             invincibleUntil = System.currentTimeMillis() + INVINCIBLE_MS;
@@ -174,7 +178,6 @@ public class PlayerAircraft extends Aircraft {
         return invincible;
     }
 
-    // 其他方法（moveUp/moveDown等）不变
     public void moveUp() {
         y -= speed;
         if (y < 0) y = 0;
@@ -199,8 +202,6 @@ public class PlayerAircraft extends Aircraft {
     public void die() {
         // AudioUtil.playPlayerDeadSound(); // 保留音效（如有）
     }
-
-
 
     public List<IBullet> getBullets() {
         return bullets;

@@ -6,9 +6,7 @@ import com.aircraftwar.entity.ScoreRecord;
 import com.aircraftwar.util.ScoreUtil;
 import com.aircraftwar.event.EventBus;
 import com.aircraftwar.event.events.FireEvent;
-import com.aircraftwar.event.events.ScoreChangedEvent;
 import com.aircraftwar.event.events.SoundEvent;
-import com.aircraftwar.event.events.UpgradeRequestEvent;
 
 import javax.imageio.ImageIO;
 import javax.swing.*;
@@ -64,6 +62,9 @@ public class GamePanel extends JPanel implements Runnable {
     private Font chineseFont;
     private Font chineseBoldFont;
 
+    // 在 GamePanel 类内，添加字段并在构造器中加载图片
+    private BufferedImage backgroundImage;
+
     public GamePanel() {
         // 初始化面板
         setPreferredSize(new Dimension(800, 850));
@@ -106,24 +107,29 @@ public class GamePanel extends JPanel implements Runnable {
             } catch (Exception ignored) {}
         });
 
-        // 订阅升级请求事件，弹出三选一升级对话
+        // 订阅升级请求事件，弹出升级对话
         EventBus.getDefault().subscribe(com.aircraftwar.event.events.UpgradeRequestEvent.class, (ure) -> {
-            // 在 EDT 中显示对话并暂停游戏
             SwingUtilities.invokeLater(() -> {
-                // 暂停游戏循环
                 int prevState = gameState;
-                gameState = GAME_START; // 临时暂停（避免 updateGame 执行)
+                gameState = GAME_START;
 
                 PlayerAircraft p = ure.getPlayer();
-                // 使用自定义对话
-                UpgradeDialog dlg = new UpgradeDialog(SwingUtilities.getWindowAncestor(this), p, com.aircraftwar.upgrade.UpgradeManager.getInstance().getAppliedCount(p));
-                int choice = dlg.showDialog();
-                if (choice >= 0 && choice < 3) {
-                    com.aircraftwar.upgrade.UpgradeOption opt = com.aircraftwar.upgrade.UpgradeOption.values()[choice];
-                    com.aircraftwar.upgrade.UpgradeManager.getInstance().applyUpgrade(p, opt);
+                com.aircraftwar.upgrade.UpgradeManager um = com.aircraftwar.upgrade.UpgradeManager.getInstance();
+
+                // 全部满级：直接跳过，不弹窗
+                if (!um.hasAnyAvailableUpgrade(p)) {
+                    gameState = prevState;
+                    return;
                 }
 
-                // 恢复游戏状态
+                UpgradeDialog dlg = new UpgradeDialog(SwingUtilities.getWindowAncestor(this), p, um.getAppliedCount(p));
+                int choice = dlg.showDialog();
+
+                if (choice >= 0 && choice < com.aircraftwar.upgrade.UpgradeOption.values().length) {
+                    com.aircraftwar.upgrade.UpgradeOption opt = com.aircraftwar.upgrade.UpgradeOption.values()[choice];
+                    um.applyUpgrade(p, opt);
+                }
+
                 gameState = prevState;
             });
         });
@@ -340,7 +346,8 @@ public class GamePanel extends JPanel implements Runnable {
         // 3. 敌机碰撞玩家
         for (EnemyAircraft enemy : allEnemies) {
             if (enemy.isAlive() && enemy.getCollisionRect().intersects(player.getCollisionRect())) {
-                player.hit(1); // 改为只扣1血，和敌机子弹一致
+                // 未被拦截，正常扣血
+                player.hit(1); // 只扣1血，和敌机子弹一致
                 enemy.hit(1);
                 explosions.add(new Explosion(player.getX(), player.getY()));
                 EventBus.getDefault().post(new SoundEvent("explode", 1.0f));
@@ -516,8 +523,6 @@ public class GamePanel extends JPanel implements Runnable {
         shootPressed = false;
     }
     // 在 GamePanel 类内，添加字段并在构造器中加载图片
-    private BufferedImage backgroundImage;
-
     public void loadBackground() {
         // 先尝试从 classpath 加载（需要 images 目录在 classpath 下，例如 resources 或 标记为 Resources Root）
         try {
