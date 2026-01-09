@@ -56,7 +56,7 @@ public class GamePanel extends JPanel implements Runnable {
     // 线程控制
     private Thread gameThread;
     private boolean isRunning;
-    private static final int FPS = 60; // 帧率
+    private static final int FPS = 70; // 帧率
 
     // 初始化支持中文的字体（全局复用）
     private Font chineseFont;

@@ -63,6 +63,15 @@ public class EnemySquad {
     // 记录编队初始偏移，便于重组
     private List<Point> formationOffsets = new ArrayList<>();
 
+    // 新增：每个小队一个相位偏移，避免所有队形同步导致视觉僵硬
+    private final double phaseOffset = random.nextDouble() * Math.PI * 2;
+
+    // 新增：普通阶段敌机活动的最低高度（y 越大越靠近底部）；避免玩家打不到
+    private static final int COMBAT_MAX_Y = 700;
+
+    // 方案B：俯冲允许更低一点，但仍然不贴底，确保玩家基本还能打到
+    private static final int DIVE_MAX_Y = 760;
+
     // 构造方法（根据波次生成小队配置，难度递增）
     public EnemySquad(int squadId, int waveNumber, long spawnDelay) {
         this.squadId = squadId;
@@ -301,7 +310,7 @@ public class EnemySquad {
             case ENTER: {
                 double enterSpeed = Math.max(1.0, moveSpeed / 2.0);
                 if (baseYf < targetBaseYf) baseYf += enterSpeed;
-                baseXf += Math.sin(now / 600.0) * 2.0;
+                // ENTER 阶段不再叠加额外的 baseXf 大摆动，避免与 moveType 叠加造成跳变
                 if (baseYf >= targetBaseYf) {
                     phase = Phase.PATROL;
                     phaseStartTime = now;
@@ -309,25 +318,21 @@ public class EnemySquad {
                 break;
             }
             case PATROL:
-                // 在上半区巡航，左右摆动，停留一段时间后触发攻击
-                baseXf += Math.sin(now / 500.0) * moveSpeed * 1.5;
-                baseYf += Math.cos(now / 1200.0) * 0.2;
-                if (phaseElapsed > 2000 + random.nextInt(2000)) { // 巡航2-4秒后开始攻击
+                // PATROL 阶段只做很轻微的纵向漂移，让 moveType 来负责“轨迹风格”
+                baseYf += Math.cos(now / 1200.0) * 0.20;
+                if (phaseElapsed > 2000 + random.nextInt(2000)) {
                     beginAttackWave();
                     phase = Phase.ATTACK;
                     phaseStartTime = now;
                 }
                 break;
             case ATTACK:
-                // 攻击时基准点缓慢向下并左右摆动幅度增大
+                // ATTACK 阶段主要向下推进，横向由 moveType 决定
                 baseYf += Math.max(1.0, moveSpeed / 3.0);
-                baseXf += Math.sin(now / 300.0) * moveSpeed * 2.0;
-                // 若攻击持续过长或多数敌机正在返回则进入REGROUP
                 boolean anyDiving = diveMap.values().stream().anyMatch(di -> di.isDiving);
                 if (phaseElapsed > 3000 + random.nextInt(2000) || !anyDiving) {
                     phase = Phase.REGROUP;
                     phaseStartTime = now;
-                    // 强制所有未返回的俯冲开始返回
                     diveMap.values().forEach(di -> {
                         if (di.isDiving && !di.returning) {
                             di.returning = true;
@@ -337,26 +342,16 @@ public class EnemySquad {
                 }
                 break;
             case REGROUP:
-                // 稳定位置等待所有回归到编队
-                baseXf += Math.sin(now / 800.0) * moveSpeed;
-                // 检查是否全部回归（所有 DiveInfo 都 inactive）
+                // REGROUP 阶段保持纵向基本稳定
                 boolean anyActive = diveMap.values().stream().anyMatch(di -> di.isDiving);
                 if (!anyActive || phaseElapsed > 2000) {
-                    // 小概率直接退出或回到巡航
-                    if (random.nextDouble() < 0.2) {
-                        phase = Phase.EXIT;
-                    } else {
-                        phase = Phase.PATROL;
-                    }
+                    phase = random.nextDouble() < 0.2 ? Phase.EXIT : Phase.PATROL;
                     phaseStartTime = now;
                 }
                 break;
             case EXIT:
-                // 缓慢向下撤退离开屏幕
                 baseYf += Math.max(2.0, moveSpeed / 2.0);
-                baseXf += Math.sin(now / 700.0) * moveSpeed;
                 if (baseYf > panelHeight + 50) {
-                    // 让所有敌机离场并标记为死亡，避免无法被玩家击中却仍被判活着
                     enemies.forEach(e -> {
                         e.setY((int) Math.round(baseYf + 200));
                         if (e.isAlive()) {
@@ -373,37 +368,43 @@ public class EnemySquad {
         // 根据 moveType 增强基准位移动（保留原有风格）
         switch (moveType) {
             case HOVER:
-                baseXf += Math.sin(now / 700.0) * 1.5;
-                baseYf += Math.cos(now / 900.0) * 0.8;
+                baseXf += Math.sin((now / 700.0) + phaseOffset) * 1.2;
+                baseYf += Math.cos((now / 900.0) + phaseOffset) * 0.6;
                 break;
             case LEFT_RIGHT:
                 baseXf += moveDirection * (double) moveSpeed;
                 if (baseXf <= boundary || baseXf >= panelWidth - boundary) moveDirection *= -1;
                 break;
-            case DIAGONAL_BACK_FORTH:
-                baseXf += moveDirection * (double) moveSpeed;
-                baseYf += moveDirection * (double) moveSpeed;
+            case DIAGONAL_BACK_FORTH: {
+                // 让斜向移动更“聪明”：速度稍慢 + 轻微摆动扰动
+                double sp = Math.max(1.4, moveSpeed * 0.75);
+                baseXf += moveDirection * sp;
+                baseYf += moveDirection * (sp * 0.70);
+                // 小扰动，避免呆板
+                baseXf += Math.sin((now / 280.0) + phaseOffset) * 0.35;
+                baseYf += Math.cos((now / 360.0) + phaseOffset) * 0.18;
+
                 if (baseXf <= boundary || baseXf >= panelWidth - boundary ||
                         baseYf <= boundary || baseYf >= 300) moveDirection *= -1;
                 break;
+            }
             case SPIRAL:
-                spiralAngle += 0.1 * moveSpeed;
-                baseXf += Math.cos(spiralAngle) * Math.max(1.0, moveSpeed / 2.0);
-                baseYf += Math.sin(spiralAngle) * Math.max(1.0, moveSpeed / 2.0) + 1.0;
+                spiralAngle += 0.07 * moveSpeed;
+                baseXf += Math.cos(spiralAngle) * Math.max(0.8, moveSpeed / 2.2);
+                baseYf += Math.sin(spiralAngle) * Math.max(0.8, moveSpeed / 2.2) + 0.9;
                 if (baseXf <= boundary || baseXf >= panelWidth - boundary) spiralAngle += Math.PI;
                 if (baseYf >= 350) baseYf = 350;
                 break;
             case SWAY_FORWARD:
-                baseXf += Math.sin(now / 500.0) * moveSpeed * 2.0;
-                baseYf += moveSpeed / 4.0;
+                baseXf += Math.sin((now / 520.0) + phaseOffset) * moveSpeed * 1.7;
+                baseYf += moveSpeed / 4.5;
                 baseXf = Math.max(boundary, Math.min(panelWidth - boundary, baseXf));
                 break;
             case ZIGZAG:
-                zigzagStep++;
-                if (zigzagStep % 30 == 0) zigzagDir *= -1;
-                baseXf += zigzagDir * (double) moveSpeed;
-                baseYf += moveSpeed / 2.0;
-                if (baseXf <= boundary || baseXf >= panelWidth - boundary) zigzagDir *= -1;
+                // 原实现是每30帧硬切换方向，会产生明显“顿挫/抽搐”
+                // 改成时间驱动的平滑折线摆动（视觉更智能也更顺滑）
+                baseXf += Math.sin((now / 260.0) + phaseOffset) * moveSpeed * 2.0;
+                baseYf += moveSpeed / 2.6;
                 if (baseYf >= 350) baseYf = 350;
                 break;
         }
@@ -411,6 +412,11 @@ public class EnemySquad {
         // clamp（double）
         baseXf = Math.max(boundary, Math.min(panelWidth - boundary, baseXf));
         baseYf = Math.max(-200, Math.min(panelHeight + 300, baseYf));
+
+        // 关键：普通阶段不允许走到屏幕底部不可攻击区（除非 EXIT 撤退/俯冲目标）
+        if (phase != Phase.EXIT) {
+            baseYf = Math.min(baseYf, COMBAT_MAX_Y);
+        }
 
         // 同步回 int（唯一一次 round）
         baseX = (int) Math.round(baseXf);
@@ -433,10 +439,12 @@ public class EnemySquad {
                 di.isDiving = true;
                 di.returning = false;
                 di.progress = 0;
-                // 俯冲稍慢一点：原来 0.02~0.03 太快，调到 0.012~0.02
                 di.progressStep = 0.012 + random.nextDouble() * 0.008;
                 di.diveTargetX = playerX + random.nextInt(120) - 60;
-                di.diveTargetY = Math.min(playerY + 20 + random.nextInt(80), panelHeight - 50);
+
+                // 俯冲目标Y：限制到 DIVE_MAX_Y，避免贴底导致玩家打不到
+                int targetY = playerY + 20 + random.nextInt(80);
+                di.diveTargetY = Math.min(targetY, DIVE_MAX_Y);
             }
         }
     }
