@@ -36,6 +36,8 @@ public class GamePanel extends JPanel implements Runnable {
     public static final int GAME_OVER = 2;
     // 新增：开始界面 -> 游戏的转场
     public static final int GAME_TRANSITION = 3;
+    // 新增：游戏介绍
+    public static final int GAME_HELP = 4;
 
     private int gameState = GAME_START;
 
@@ -64,8 +66,10 @@ public class GamePanel extends JPanel implements Runnable {
     private Font chineseFont;
     private Font chineseBoldFont;
 
-    // 在 GamePanel 类内，添加字段并在构造器中加载图片
+    // 游戏运行时背景
     private BufferedImage backgroundImage;
+    // 开始界面背景
+    private BufferedImage startBackgroundImage;
 
     // 仅用于调试：打印一次真实面板尺寸
     private boolean printedPanelSize = false;
@@ -77,6 +81,45 @@ public class GamePanel extends JPanel implements Runnable {
 
     // ===== 受击反馈（屏幕震动/红屏） =====
     private static final int HIT_SHAKE_PX = 6;
+
+    // ===== 难度系统（目前仅实现切换与UI展示，具体难度效果后续接入） =====
+    private enum Difficulty {
+        NEWBIE("新手", new Color(0, 220, 0)),
+        VETERAN("老手", new Color(255, 215, 0)),
+        IMPOSSIBLE("不可能", new Color(255, 60, 60));
+
+        private final String displayName;
+        private final Color color;
+
+        Difficulty(String displayName, Color color) {
+            this.displayName = displayName;
+            this.color = color;
+        }
+
+        public String getDisplayName() { return displayName; }
+        public Color getColor() { return color; }
+    }
+
+    // 当前难度（默认：新手）
+    private Difficulty currentDifficulty = Difficulty.NEWBIE;
+
+    // 预留扩展点：后续在 startNewWave()/EnemySquad/Wave 等处读取该值调整参数
+    public String getCurrentDifficulty() {
+        return currentDifficulty.getDisplayName();
+    }
+
+    // 将 Difficulty 映射为持久化用的 key（用于 ScoreUtil 分榜）
+    private String getDifficultyKey() {
+        switch (currentDifficulty) {
+            case VETERAN:
+                return "veteran";
+            case IMPOSSIBLE:
+                return "impossible";
+            case NEWBIE:
+            default:
+                return "newbie";
+        }
+    }
 
     public GamePanel() {
         // 初始化面板
@@ -93,8 +136,9 @@ public class GamePanel extends JPanel implements Runnable {
             chineseBoldFont = new Font("SimSun", Font.BOLD, 25);
         }
 
-        // 加载背景图（确保在 initGame 之前或至少在首次绘制前加载）
+        // 加载背景图（开始界面/游戏内分别加载）
         loadBackground();
+        loadStartBackground();
 
         // 订阅音效事件，桥接到 AudioUtil（AudioUtil 已经委托给 SoundManager）
         EventBus.getDefault().subscribe(com.aircraftwar.event.events.SoundEvent.class, (se) -> {
@@ -429,7 +473,6 @@ public class GamePanel extends JPanel implements Runnable {
     private void checkGameOver() {
         if (!player.isAlive() && gameState != GAME_OVER) {
             gameState = GAME_OVER;
-            // 进入游戏结束状态时清除所有按键状态，防止焦点/按键事件丢失导致下一把继承方向
             resetInputStates();
             AudioUtil.stopBGM();
             AudioUtil.playGameOverSound();
@@ -575,7 +618,10 @@ public class GamePanel extends JPanel implements Runnable {
                 // 显示对话框
                 inputDialog.setVisible(true);
                 String nickname = nicknameHolder[0];
-                ScoreUtil.saveScore(nickname, score);
+
+                // 按当前难度保存到对应排行榜
+                ScoreUtil.saveScore(getDifficultyKey(), nickname, score);
+
                 repaint();
             });
         }
@@ -615,6 +661,29 @@ public class GamePanel extends JPanel implements Runnable {
         // 都失败时设为 null（画面会用纯色兜底）
         backgroundImage = null;
     }
+    // 开始界面背景
+    private void loadStartBackground() {
+        try {
+            java.net.URL url = getClass().getResource("/images/Background2.png");
+            if (url != null) {
+                startBackgroundImage = ImageIO.read(url);
+                return;
+            }
+        } catch (IOException ignored) {
+        }
+
+        try {
+            java.io.File f = new java.io.File("images/Background2.png");
+            if (f.exists()) {
+                startBackgroundImage = ImageIO.read(f);
+                return;
+            }
+        } catch (IOException ignored) {
+        }
+
+        startBackgroundImage = null;
+    }
+
     // 绘制游戏界面（新增小队/波次信息）
     @Override
     protected void paintComponent(Graphics g) {
@@ -638,9 +707,13 @@ public class GamePanel extends JPanel implements Runnable {
 
         // 开启文字抗锯齿，避免中文显示模糊
         g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-        if (backgroundImage != null) {
+        // 背景：开始界面/转场/介绍界面统一用 Background2
+        boolean isStartLike = (gameState == GAME_START || gameState == GAME_TRANSITION || gameState == GAME_HELP);
+        BufferedImage bg = isStartLike ? startBackgroundImage : backgroundImage;
+
+        if (bg != null) {
             // 简单拉伸铺满整个面板：
-            g2d.drawImage(backgroundImage, 0, 0, getWidth(), getHeight(), null);
+            g2d.drawImage(bg, 0, 0, getWidth(), getHeight(), null);
         } else {
             // 图片加载失败，使用纯色背景作为兜底
             g2d.setColor(Color.BLACK);
@@ -661,7 +734,7 @@ public class GamePanel extends JPanel implements Runnable {
 
             String title = "飞机大战";
             String line1 = "R 开始游戏";
-            String line2 = "T 游戏难度：简单";
+            String line2 = "T 游戏难度：" + currentDifficulty.getDisplayName();
             String line3 = "Y 游戏介绍";
             String bottom = "WASD 控制飞机移动，空格发射子弹";
 
@@ -689,10 +762,14 @@ public class GamePanel extends JPanel implements Runnable {
             int x1 = (getWidth() - fmMenu.stringWidth(line1)) / 2;
             g2d.drawString(line1, x1, startY);
 
-            g2d.setColor(Color.WHITE);
+            // 第二行：难度（按难度上色）
+            g2d.setColor(currentDifficulty.getColor());
             int x2 = (getWidth() - fmMenu.stringWidth(line2)) / 2;
-            int x3 = (getWidth() - fmMenu.stringWidth(line3)) / 2;
             g2d.drawString(line2, x2, startY + gap);
+
+            // 第三行：Y
+            g2d.setColor(Color.WHITE);
+            int x3 = (getWidth() - fmMenu.stringWidth(line3)) / 2;
             g2d.drawString(line3, x3, startY + gap * 2);
 
             // 底部说明
@@ -719,6 +796,84 @@ public class GamePanel extends JPanel implements Runnable {
 
             // 开始界面/转场绘制完毕
             if (gameState != GAME_RUNNING) return;
+        }
+
+        if (gameState == GAME_HELP) {
+            // ===== 游戏介绍界面 =====
+            g2d.setColor(new Color(0, 0, 0, 170));
+            g2d.fillRect(0, 0, getWidth(), getHeight());
+
+            g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+
+            Font titleFont = chineseBoldFont != null ? chineseBoldFont.deriveFont(Font.BOLD, 46f) : new Font("微软雅黑", Font.BOLD, 46);
+            Font sectionFont = chineseBoldFont != null ? chineseBoldFont.deriveFont(Font.BOLD, 28f) : new Font("微软雅黑", Font.BOLD, 28);
+            Font itemFont = chineseFont != null ? chineseFont.deriveFont(Font.PLAIN, 22f) : new Font("微软雅黑", Font.PLAIN, 22);
+            Font tipFont = chineseFont != null ? chineseFont.deriveFont(Font.PLAIN, 18f) : new Font("微软雅黑", Font.PLAIN, 18);
+
+            String title = "游戏介绍";
+            g2d.setFont(titleFont);
+            FontMetrics fmTitle = g2d.getFontMetrics();
+            int titleX = (getWidth() - fmTitle.stringWidth(title)) / 2;
+            int titleY = 90;
+            g2d.setColor(Color.WHITE);
+            g2d.drawString(title, titleX, titleY);
+
+            // 难度介绍
+            g2d.setFont(sectionFont);
+            g2d.setColor(Color.WHITE);
+            String section = "难度介绍";
+            int secX = (getWidth() - g2d.getFontMetrics().stringWidth(section)) / 2;
+            int y = titleY + 80;
+            g2d.drawString(section, secX, y);
+
+            y += 40;
+
+            // 三档难度词条
+            int leftX = 110;
+            int rightX = getWidth() / 2 + 40;
+            int colY = y + 30;
+
+            // 新手
+            g2d.setFont(sectionFont);
+            g2d.setColor(Difficulty.NEWBIE.getColor());
+            g2d.drawString("新手", leftX, colY);
+            g2d.setFont(itemFont);
+            g2d.setColor(Color.WHITE);
+            int iy = colY + 34;
+            g2d.drawString("• 敌人轻微攻击欲望", leftX, iy);
+            g2d.drawString("• 正常敌机密度", leftX, iy + 30);
+            g2d.drawString("• 正常敌人频率", leftX, iy + 60);
+
+            // 老手
+            g2d.setFont(sectionFont);
+            g2d.setColor(Difficulty.VETERAN.getColor());
+            g2d.drawString("老手", rightX, colY);
+            g2d.setFont(itemFont);
+            g2d.setColor(Color.WHITE);
+            int jy = colY + 34;
+            g2d.drawString("• 敌人正常攻击欲望", rightX, jy);
+            g2d.drawString("• 敌人出现频率增加", rightX, jy + 30);
+
+            // 不可能
+            int thirdY = colY + 160;
+            g2d.setFont(sectionFont);
+            g2d.setColor(Difficulty.IMPOSSIBLE.getColor());
+            g2d.drawString("不可能", leftX, thirdY);
+            g2d.setFont(itemFont);
+            g2d.setColor(Color.WHITE);
+            int ky = thirdY + 34;
+            g2d.drawString("• 敌人强攻击欲望", leftX, ky);
+            g2d.drawString("• 弹幕压力大", leftX, ky + 30);
+            g2d.drawString("• 升级压力大", leftX, ky + 60);
+
+            // 底部提示
+            g2d.setFont(tipFont);
+            String back = "按 Q 或 ESC 返回开始界面";
+            int backX = (getWidth() - g2d.getFontMetrics().stringWidth(back)) / 2;
+            g2d.setColor(new Color(255, 255, 255, 220));
+            g2d.drawString(back, backX, getHeight() - 40);
+
+            return;
         }
 
         if (gameState == GAME_RUNNING) {
@@ -749,8 +904,8 @@ public class GamePanel extends JPanel implements Runnable {
 
             // 分数（波次越高，得分倍率越高）
             g.drawString("分数: " + score + " (x" + currentWaveNumber + ")", 20, 30);
-            // 历史最高分
-            g.drawString("历史最高分: " + ScoreUtil.getHighestScore(), 20, 60);
+            // 历史最高分（按难度）
+            g.drawString("历史最高分: " + ScoreUtil.getHighestScore(getDifficultyKey()), 20, 60);
             // 当前波次
             g.drawString("当前波次: " + currentWaveNumber, 20, 90);
             // 剩余小队数
@@ -799,26 +954,27 @@ public class GamePanel extends JPanel implements Runnable {
             g2d.setFont(new Font("微软雅黑", Font.BOLD, 30));
             g2d.drawString("最终得分: " + score, getWidth()/2 - 100, getHeight()/2 - 100);
             g2d.drawString("到达波次: " + currentWaveNumber, getWidth()/2 - 100, getHeight()/2 - 50);
-            g2d.drawString("历史最高分: " + ScoreUtil.getHighestScore(), getWidth()/2 - 100, getHeight()/2);
+            g2d.drawString("历史最高分: " + ScoreUtil.getHighestScore(getDifficultyKey()), getWidth()/2 - 100, getHeight()/2);
 
-            // 绘制排行榜标题（中文）
+            // 绘制排行榜标题（中文）+ 当前难度
             g2d.setFont(chineseBoldFont);
-            g2d.drawString("排行榜 Top 5", getWidth()/2 - 80, getHeight()/2 + 50);
+            g2d.drawString("排行榜 Top 5 - " + currentDifficulty.getDisplayName(), getWidth()/2 - 140, getHeight()/2 + 50);
+
+            // 只展示当前难度榜单
+            g2d.setFont(chineseFont);
+            List<ScoreRecord> topRecords = ScoreUtil.getTopScores(getDifficultyKey());
 
             // ========== 核心修复2：正确计算中文文本宽度，避免偏移 ==========
             g2d.setFont(chineseFont);
-            List<ScoreRecord> topRecords = ScoreUtil.getTopScores();
             int yOffset = 0;
             for (int i = 0; i < Math.min(topRecords.size(), 5); i++) {
                 yOffset += 30;
                 ScoreRecord record = topRecords.get(i);
-                // 拼接排行榜文本（支持中文昵称）
                 String rankText = String.format("%d. %s - %d", i+1, record.getNickname(), record.getScore());
 
-                // 计算文本宽度（兼容中文），居中显示
                 FontMetrics fm = g2d.getFontMetrics();
                 int textWidth = fm.stringWidth(rankText);
-                int textX = (getWidth() - textWidth) / 2; // 真正居中，适配中文宽度
+                int textX = (getWidth() - textWidth) / 2;
 
                 g2d.drawString(rankText, textX, getHeight()/2 + 50 + yOffset);
             }
@@ -829,6 +985,13 @@ public class GamePanel extends JPanel implements Runnable {
             int restartWidth = g2d.getFontMetrics().stringWidth(restartText);
             int restartX = (getWidth() - restartWidth) / 2;
             g2d.drawString(restartText, restartX, getHeight()/2 + 50 + yOffset + 30);
+
+            // 额外：返回开始界面提示
+            g2d.setFont(chineseFont);
+            String backText = "按 Q 返回开始界面";
+            int backWidth = g2d.getFontMetrics().stringWidth(backText);
+            int backX = (getWidth() - backWidth) / 2;
+            g2d.drawString(backText, backX, getHeight()/2 + 50 + yOffset + 60);
         }
 
         // 还原 translate，避免影响 Swing 后续绘制
@@ -867,6 +1030,59 @@ public class GamePanel extends JPanel implements Runnable {
                     // 开始界面：按 R 进入转场；结束界面：按 R 重新开始（也走转场）
                     if (gameState == GAME_START || gameState == GAME_OVER) {
                         startTransitionToGame();
+                    }
+                    break;
+                case KeyEvent.VK_T:
+                    // 仅在开始界面允许切换难度（避免游戏中误触）
+                    if (gameState == GAME_START) {
+                        switch (currentDifficulty) {
+                            case NEWBIE:
+                                currentDifficulty = Difficulty.VETERAN;
+                                break;
+                            case VETERAN:
+                                currentDifficulty = Difficulty.IMPOSSIBLE;
+                                break;
+                            case IMPOSSIBLE:
+                            default:
+                                currentDifficulty = Difficulty.NEWBIE;
+                                break;
+                        }
+                        repaint();
+                    }
+                    break;
+                case KeyEvent.VK_Y:
+                    // 开始界面：进入游戏介绍
+                    if (gameState == GAME_START) {
+                        resetInputStates();
+                        gameState = GAME_HELP;
+                        repaint();
+                    }
+                    break;
+                case KeyEvent.VK_ESCAPE:
+                    // 介绍界面：返回
+                    if (gameState == GAME_HELP) {
+                        resetInputStates();
+                        gameState = GAME_START;
+                        repaint();
+                    }
+                    break;
+                case KeyEvent.VK_Q:
+                    // 介绍界面：返回开始界面
+                    if (gameState == GAME_HELP) {
+                        resetInputStates();
+                        gameState = GAME_START;
+                        AudioUtil.stopBGM();
+                        repaint();
+                        break;
+                    }
+
+                    // 游戏结束界面：返回开始界面
+                    if (gameState == GAME_OVER) {
+                        resetInputStates();
+                        gameState = GAME_START;
+                        // 回到开始界面不播放 BGM（你若希望菜单也有BGM可后续加）
+                        AudioUtil.stopBGM();
+                        repaint();
                     }
                     break;
             }
