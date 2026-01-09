@@ -16,7 +16,9 @@ public class UpgradeManager {
     private static final UpgradeManager INSTANCE = new UpgradeManager();
     private final Map<PlayerAircraft, Integer> appliedCount = new HashMap<>();
 
-    private static final int THRESHOLD = 100; // 每 100 分触发一次
+    // 升级触发：首次 300 分；之后门槛逐渐提高（温和二次增长）
+    private static final int FIRST_THRESHOLD = 300;
+    private static final int MAX_THRESHOLD_SCORE = 10_000; // 期望：1w 分前能把可升级项升满
 
     private UpgradeManager() {
         EventBus.getDefault().subscribe(ScoreChangedEvent.class, this::onScoreChanged);
@@ -49,20 +51,35 @@ public class UpgradeManager {
         return false;
     }
 
+    /**
+     * 计算“下一次升级弹窗”需要达到的分数。
+     * 目标：前期不频繁打断，后期更难；但总体不会把升级周期拉太长（1w 分前基本能升满）。
+     */
+    private int nextUpgradeScore(int appliedTimes) {
+        int n = Math.max(0, appliedTimes);
+
+        // 更“后期变难”的二次：score = 300 + 700*n^2
+        // n=0 -> 300
+        // n=1 -> 1000
+        // n=2 -> 3100（略高于 2500，但更符合“稍难一点”的诉求；如需更贴近 2500 可再微调系数）
+        int score = FIRST_THRESHOLD + 700 * n * n;
+
+        return Math.min(score, MAX_THRESHOLD_SCORE);
+    }
+
     private void onScoreChanged(ScoreChangedEvent evt) {
         try {
             PlayerAircraft player = evt.getPlayer();
             int oldScore = evt.getOldScore();
             int newScore = evt.getNewScore();
 
-            // 如果已经全部满级，就永远不再弹出升级
             if (!hasAnyAvailableUpgrade(player)) return;
 
-            // 简单策略：如果跨过了下一个 THRESHOLD 的倍数，则触发一次
-            int oldLevel = oldScore / THRESHOLD;
-            int newLevel = newScore / THRESHOLD;
-            if (newLevel > oldLevel) {
-                int oldCount = appliedCount.getOrDefault(player, 0);
+            int oldCount = appliedCount.getOrDefault(player, 0);
+            int threshold = nextUpgradeScore(oldCount);
+
+            // 只要从旧分跨过“下一次门槛”就触发
+            if (oldScore < threshold && newScore >= threshold) {
                 EventBus.getDefault().post(new UpgradeRequestEvent(player, oldCount));
             }
         } catch (Exception ignored) {}

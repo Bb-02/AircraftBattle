@@ -141,8 +141,8 @@ public class EnemySquad {
     private static final double ENTER_CURVE_AMPLITUDE = 10.0;
 
     // 入场目标高度范围（更自然：进入后停在屏幕上方一段距离，再开始巡航）
-    private static final int ENTER_TARGET_Y_MIN = 50;
-    private static final int ENTER_TARGET_Y_MAX = 120;
+    private static final int ENTER_TARGET_Y_MIN = 70;
+    private static final int ENTER_TARGET_Y_MAX = 105;
 
     // 构造方法（根据波次生成小队配置，难度递增）
     public EnemySquad(int squadId, int waveNumber, long spawnDelay) {
@@ -717,7 +717,7 @@ public class EnemySquad {
             di.progress = 0.0;
 
             // 更平滑的俯冲：步进更小一点，整体时间更长，视觉更像“曲线俯冲”
-            di.progressStep = 0.010 + random.nextDouble() * 0.006;
+            di.progressStep = 0.020 + random.nextDouble() * 0.007;
 
             // 按你的要求：去掉“同步玩家位置”。
             // 俯冲目标改为：基于当前编队位置向下推进 + 水平侧移（更像雷霆战机的压迫俯冲）

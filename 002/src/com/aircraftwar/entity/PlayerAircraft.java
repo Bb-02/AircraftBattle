@@ -12,7 +12,9 @@ import java.util.List;
 public class PlayerAircraft extends Aircraft {
     private List<IBullet> bullets;
     private long lastShootTime;
-    private long shootInterval = 200;
+
+    // 玩家射击间隔（ms）：数值越大射速越慢
+    private long shootInterval = 300;
 
     // 玩家飞机尺寸（和图片适配）
     private static final int PLAYER_WIDTH = 40;
