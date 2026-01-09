@@ -23,18 +23,27 @@ public class Wave {
         this.isWaveOver = false;
 
         // 生成本波小队列表（波次越高，小队数越多）
-        int squadCount = 2 + (waveNumber / 3);
-        if (waveNumber <= 1) squadCount = 3; // 开局更紧凑一点
-        if (squadCount > 6) squadCount = 6;
+        // 调整：整体 +1，提高同屏威胁；前几波更紧凑
+        int squadCount = 3 + (waveNumber / 3);
+        if (waveNumber <= 1) squadCount = 4; // 开局更紧凑
+        if (waveNumber <= 3 && squadCount < 5) squadCount = 5; // 1~3 波适当加压
+        if (squadCount > 7) squadCount = 7;
         this.squads = new ArrayList<>();
 
-        // 小队按时间间隔生成（开局更快，后续保持随机）
+        // 小队按时间间隔生成：前期更快，后期也逐步变快一些
         long spawnDelay = 0;
         for (int i = 0; i < squadCount; i++) {
             if (waveNumber <= 1) {
-                spawnDelay += (1100 + (long) (Math.random() * 1000)); // 1.1-2.1s
+                // 0.8-1.4s：开局更有压迫感
+                spawnDelay += (1000 + (long) (Math.random() * 600));
+            } else if (waveNumber <= 3) {
+                // 1.0-2.0s：前几波更密集
+                spawnDelay += (1000 + (long) (Math.random() * 1000));
             } else {
-                spawnDelay += (1700 + (long) (Math.random() * 2400)); // 1.7-4.1s（略快于原来的2-5s）
+                // 随波次稍微缩短生成间隔（下限兜底），避免后期变“空窗期”
+                long base = Math.max(900, 1700 - waveNumber * 60L);
+                long jitter = Math.max(700, 2200 - waveNumber * 40L);
+                spawnDelay += (base + (long) (Math.random() * jitter));
             }
             squads.add(new EnemySquad(i + 1, waveNumber, spawnDelay));
         }
