@@ -112,52 +112,59 @@ public class EnemySquad {
 
     // 按编队形状生成小队敌机（同时记录初始偏移）
     private void generateSquadEnemies() {
-        int spacing = 40; // 编队间距（敌机之间的距离）
+        int spacingX = 46; // X 间距（更自然）
+        int spacingY = 36; // Y 间距（更自然）
 
         formationOffsets.clear();
 
+        // 更自然的“交错队列”：两列错位排列（类似交错编队/蜂群）
+        // enemyCount: 1-5
+        // slot 0: (0,0)
+        // slot 1: (-spacingX/2, spacingY)
+        // slot 2: ( spacingX/2, spacingY)
+        // slot 3: (-spacingX/2, 2*spacingY)
+        // slot 4: ( spacingX/2, 2*spacingY)
+        Point[] stagger = {
+                new Point(0, 0),
+                new Point(-spacingX / 2, spacingY),
+                new Point(spacingX / 2, spacingY),
+                new Point(-spacingX / 2, 2 * spacingY),
+                new Point(spacingX / 2, 2 * spacingY)
+        };
+
+        // 仍保留你原来的 formation 选择，但让布局更“自然”；
+        // HORIZONTAL/DIAMOND/默认 => 交错队列
+        // VERTICAL => 轻微左右交错的竖列
+        // TRIANGLE => 三角（轻微收紧）
         switch (formation) {
-            case HORIZONTAL:
-                for (int i = 0; i < enemyCount; i++) {
-                    int offsetX = - (enemyCount - 1) * spacing / 2 + i * spacing;
-                    int offsetY = 0;
-                    formationOffsets.add(new Point(offsetX, offsetY));
-                    addEnemy(baseX + offsetX, baseY + offsetY);
-                }
-                break;
             case VERTICAL:
                 for (int i = 0; i < enemyCount; i++) {
-                    int offsetX = 0;
-                    int offsetY = - (enemyCount - 1) * spacing / 2 + i * spacing;
-                    formationOffsets.add(new Point(offsetX, offsetY));
-                    addEnemy(baseX + offsetX, baseY + offsetY);
+                    int ox = (i % 2 == 0) ? 0 : spacingX / 3; // 竖列左右轻微错位
+                    int oy = i * spacingY;
+                    formationOffsets.add(new Point(ox, oy));
+                    addEnemy(baseX + ox, baseY + oy);
                 }
                 break;
             case TRIANGLE:
-                // 固定最多5个位置
+                // 三角：顶点 + 两侧 + 底部（最多 5）
                 Point[] tri = {
-                        new Point(0,0),
-                        new Point(-spacing, spacing),
-                        new Point(spacing, spacing),
-                        new Point(0, -spacing),
-                        new Point(0, 2*spacing)
+                        new Point(0, 0),
+                        new Point(-spacingX / 2, spacingY),
+                        new Point(spacingX / 2, spacingY),
+                        new Point(0, 2 * spacingY),
+                        new Point(0, 3 * spacingY)
                 };
                 for (int i = 0; i < enemyCount; i++) {
                     formationOffsets.add(new Point(tri[i]));
                     addEnemy(baseX + tri[i].x, baseY + tri[i].y);
                 }
                 break;
+            case HORIZONTAL:
             case DIAMOND:
-                Point[] dia = {
-                        new Point(0,0),
-                        new Point(-spacing,0),
-                        new Point(spacing,0),
-                        new Point(0,-spacing),
-                        new Point(0,spacing)
-                };
+            default:
                 for (int i = 0; i < enemyCount; i++) {
-                    formationOffsets.add(new Point(dia[i]));
-                    addEnemy(baseX + dia[i].x, baseY + dia[i].y);
+                    formationOffsets.add(new Point(stagger[i]));
+                    addEnemy(baseX + stagger[i].x, baseY + stagger[i].y);
                 }
                 break;
         }
@@ -171,9 +178,17 @@ public class EnemySquad {
 
     // 添加单架敌机到小队
     private void addEnemy(int x, int y) {
-        EnemyAircraft enemy = new EnemyAircraft(
-                800, 600, moveType, waveNumber, x, y // 传递初始位置，适配小队编队
-        );
+        // Jellyfish 概率：波次越高出现概率越大（上限 35%）
+        double jellyProb = Math.min(0.10 + waveNumber * 0.03, 0.35);
+
+        EnemyAircraft enemy;
+        if (random.nextDouble() < jellyProb) {
+            enemy = new JellyfishAircraft(waveNumber, x, y);
+        } else {
+            enemy = new EnemyAircraft(
+                    800, 600, moveType, waveNumber, x, y // 传递初始位置，适配小队编队
+            );
+        }
         enemies.add(enemy);
     }
 
@@ -199,14 +214,25 @@ public class EnemySquad {
 
         updateBasePosition();
 
-        int idx = 0;
-        for (EnemyAircraft enemy : enemies) {
+        for (int slotIndex = 0; slotIndex < enemies.size(); slotIndex++) {
+            EnemyAircraft enemy = enemies.get(slotIndex);
             if (!enemy.isAlive()) {
-                idx++;
                 continue;
             }
 
-            Point baseOffset = idx < formationOffsets.size() ? formationOffsets.get(idx) : new Point(0,0);
+            Point baseOffset = slotIndex < formationOffsets.size() ? formationOffsets.get(slotIndex) : new Point(0, 0);
+            int targetX = baseX + baseOffset.x;
+            int targetY = baseY + baseOffset.y;
+
+            // Jellyfish：无论是否脱队，都由它自己 move()；
+            // 但我们把编队槽位目标点喂给它，让它可以“先编队→脱队→偶尔回队”。
+            if (enemy instanceof JellyfishAircraft) {
+                JellyfishAircraft jelly = (JellyfishAircraft) enemy;
+                jelly.setFormationTarget(targetX, targetY);
+                jelly.move();
+                continue;
+            }
+
             int offsetX = baseOffset.x;
             int offsetY = baseOffset.y;
 
@@ -237,20 +263,17 @@ public class EnemySquad {
                 }
             }
 
-            enemy.setX(baseX + offsetX + random.nextInt(3) - 1);
-            enemy.setY(baseY + offsetY + random.nextInt(3) - 1);
+            enemy.setX(baseX + offsetX);
+            enemy.setY(baseY + offsetY);
 
-            // 如果敌机已经飞出屏幕底部，直接标记为死亡，避免波次卡住
             if (enemy.getY() > panelHeight + 50 && enemy.isAlive()) {
                 try {
-                    enemy.hit(9999); // 使用大伤害保证死亡（兼容没有 setAlive 接口的实现）
+                    enemy.hit(9999);
                 } catch (Throwable ignore) {
-                    // 若 hit 不存在或抛异常则忽略（项目中一般存在 hit(int)）
                 }
             }
 
             enemy.move();
-            idx++;
         }
 
         checkAllDead();
@@ -338,8 +361,9 @@ public class EnemySquad {
         // 根据 moveType 增强基准位移动（保留原有风格）
         switch (moveType) {
             case HOVER:
-                baseX += random.nextInt(3) - 1;
-                baseY += random.nextInt(2) - 1;
+                // 原来的 random 抖动会导致明显抽搐，改成平滑微摆动（漂浮感）
+                baseX += (int) (Math.sin(now / 700.0) * 1.5);
+                baseY += (int) (Math.cos(now / 900.0) * 0.8);
                 break;
             case LEFT_RIGHT:
                 baseX += moveDirection * moveSpeed;
@@ -444,4 +468,3 @@ public class EnemySquad {
         }
     }
 }
-

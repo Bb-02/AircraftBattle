@@ -5,7 +5,9 @@ import com.aircraftwar.ui.GameFrame;
 import javax.swing.*;
 
 /**
- * 游戏入口类（无外部资源依赖，可直接运行）
+ * author: Bb-02
+ * 游戏入口类
+ * date: 2026/1/09
  */
 public class GameMain {
     public static void main(String[] args) {

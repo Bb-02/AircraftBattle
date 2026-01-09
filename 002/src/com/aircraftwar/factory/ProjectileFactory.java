@@ -1,12 +1,12 @@
 package com.aircraftwar.factory;
 
 import com.aircraftwar.entity.Bullet;
+import com.aircraftwar.entity.DirectionalEnemyBullet;
 import com.aircraftwar.entity.EnemyBullet;
 import com.aircraftwar.entity.IBullet;
 
 import java.util.HashMap;
 import java.util.Map;
-import java.util.function.Function;
 
 /**
  * 可注册的 ProjectileFactory：按弹种字符串创建弹体。当前注册默认的 player_basic / enemy_basic。
@@ -22,6 +22,14 @@ public class ProjectileFactory {
         // register defaults
         registry.put("player_basic", params -> new Bullet((int) params.getOrDefault("x", 0), (int) params.getOrDefault("y", 0), (int) params.getOrDefault("w", 40)));
         registry.put("enemy_basic", params -> new EnemyBullet((int) params.getOrDefault("x", 0), (int) params.getOrDefault("y", 0)));
+
+        // 新增：可指定速度向量的敌机子弹（用于环形散射）
+        registry.put("enemy_directional", params -> new DirectionalEnemyBullet(
+                (int) params.getOrDefault("x", 0),
+                (int) params.getOrDefault("y", 0),
+                ((Number) params.getOrDefault("vx", 0.0)).doubleValue(),
+                ((Number) params.getOrDefault("vy", 0.0)).doubleValue()
+        ));
     }
 
     public static void register(String type, Maker maker) {
@@ -49,5 +57,14 @@ public class ProjectileFactory {
         p.put("x", x);
         p.put("y", y);
         return create("enemy_basic", p);
+    }
+
+    public static IBullet createEnemyDirectionalBullet(int x, int y, double vx, double vy) {
+        Map<String, Object> p = new HashMap<>();
+        p.put("x", x);
+        p.put("y", y);
+        p.put("vx", vx);
+        p.put("vy", vy);
+        return create("enemy_directional", p);
     }
 }
