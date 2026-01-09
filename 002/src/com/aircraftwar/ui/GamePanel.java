@@ -34,6 +34,8 @@ public class GamePanel extends JPanel implements Runnable {
     public static final int GAME_START = 0;
     public static final int GAME_RUNNING = 1;
     public static final int GAME_OVER = 2;
+    // 新增：开始界面 -> 游戏的转场
+    public static final int GAME_TRANSITION = 3;
 
     private int gameState = GAME_START;
 
@@ -67,6 +69,11 @@ public class GamePanel extends JPanel implements Runnable {
 
     // 仅用于调试：打印一次真实面板尺寸
     private boolean printedPanelSize = false;
+
+    // ===== 开始界面/转场效果参数 =====
+    private long transitionStartMs = 0L;
+    private static final long TRANSITION_MS = 520L; // 转场总时长（ms）
+    private boolean transitionToGame = false;
 
     public GamePanel() {
         // 初始化面板
@@ -138,7 +145,14 @@ public class GamePanel extends JPanel implements Runnable {
         });
 
         // 初始化游戏元素
-        initGame();
+        // 原先这里会直接 initGame() 并进入 GAME_RUNNING。
+        // 现在改为：先进入开始界面，等待玩家按 R 开始。
+        gameState = GAME_START;
+        score = 0;
+        currentWaveNumber = 1;
+        player = new PlayerAircraft(400 - 20, 500);
+        explosions = new ArrayList<>();
+        currentWave = null;
 
         // 添加键盘监听
         addKeyListener(new GameKeyListener());
@@ -233,6 +247,8 @@ public class GamePanel extends JPanel implements Runnable {
             while (delta >= 1) {
                 if (gameState == GAME_RUNNING) {
                     updateGame(); // 更新游戏逻辑
+                } else if (gameState == GAME_TRANSITION) {
+                    updateTransition();
                 }
                 delta--;
             }
@@ -248,6 +264,36 @@ public class GamePanel extends JPanel implements Runnable {
                 e.printStackTrace();
             }
         }
+    }
+
+    // 转场更新：时间到后真正进入/重开游戏
+    private void updateTransition() {
+        long now = System.currentTimeMillis();
+        if (transitionStartMs <= 0L) transitionStartMs = now;
+
+        long elapsed = now - transitionStartMs;
+        if (elapsed >= TRANSITION_MS) {
+            // 转场结束：真正开始游戏
+            if (transitionToGame) {
+                // 清理标记，避免递归
+                transitionToGame = false;
+                transitionStartMs = 0L;
+                initGame();
+            } else {
+                // 预留：未来可做“返回主菜单”等
+                gameState = GAME_START;
+                transitionStartMs = 0L;
+            }
+        }
+    }
+
+    // 开始一次“进入游戏”的转场
+    private void startTransitionToGame() {
+        resetInputStates();
+        transitionToGame = true;
+        transitionStartMs = System.currentTimeMillis();
+        gameState = GAME_TRANSITION;
+        requestFocusInWindow();
     }
 
     // 更新游戏逻辑
@@ -589,6 +635,79 @@ public class GamePanel extends JPanel implements Runnable {
         }
 
 
+        if (gameState == GAME_START || gameState == GAME_TRANSITION) {
+            // ===== 开始界面（含转场覆盖层） =====
+            g2d.setColor(new Color(0, 0, 0, 160));
+            g2d.fillRect(0, 0, getWidth(), getHeight());
+
+            g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+
+            Font titleFont = chineseBoldFont != null ? chineseBoldFont.deriveFont(Font.BOLD, 56f) : new Font("微软雅黑", Font.BOLD, 56);
+            Font menuFont = chineseBoldFont != null ? chineseBoldFont.deriveFont(Font.BOLD, 26f) : new Font("微软雅黑", Font.BOLD, 26);
+            Font tipFont = chineseFont != null ? chineseFont.deriveFont(Font.PLAIN, 20f) : new Font("微软雅黑", Font.PLAIN, 20);
+
+            String title = "飞机大战";
+            String line1 = "R 开始游戏";
+            String line2 = "T 游戏难度：简单";
+            String line3 = "Y 游戏介绍";
+            String bottom = "WASD 控制飞机移动，空格发射子弹";
+
+            // 标题
+            g2d.setFont(titleFont);
+            FontMetrics fmTitle = g2d.getFontMetrics();
+            int titleX = (getWidth() - fmTitle.stringWidth(title)) / 2;
+            int titleY = getHeight() / 2 - 180;
+            g2d.setColor(Color.WHITE);
+            g2d.drawString(title, titleX, titleY);
+
+            // 菜单
+            g2d.setFont(menuFont);
+            FontMetrics fmMenu = g2d.getFontMetrics();
+            int startY = titleY + 90;
+            int gap = 46;
+
+            // 1) R 的闪烁高亮（只在开始界面/转场前半段显示更明显）
+            boolean blinkOn = (System.currentTimeMillis() / 380) % 2 == 0;
+            if (gameState == GAME_START && blinkOn) {
+                g2d.setColor(new Color(255, 215, 0));
+            } else {
+                g2d.setColor(Color.WHITE);
+            }
+            int x1 = (getWidth() - fmMenu.stringWidth(line1)) / 2;
+            g2d.drawString(line1, x1, startY);
+
+            g2d.setColor(Color.WHITE);
+            int x2 = (getWidth() - fmMenu.stringWidth(line2)) / 2;
+            int x3 = (getWidth() - fmMenu.stringWidth(line3)) / 2;
+            g2d.drawString(line2, x2, startY + gap);
+            g2d.drawString(line3, x3, startY + gap * 2);
+
+            // 底部说明
+            g2d.setFont(tipFont);
+            FontMetrics fmTip = g2d.getFontMetrics();
+            int bottomX = (getWidth() - fmTip.stringWidth(bottom)) / 2;
+            int bottomY = getHeight() - 40;
+            g2d.setColor(new Color(255, 255, 255, 220));
+            g2d.drawString(bottom, bottomX, bottomY);
+
+            // 2) 转场覆盖层：淡出开始界面（黑色蒙版 alpha 从 0->1）
+            if (gameState == GAME_TRANSITION) {
+                long now = System.currentTimeMillis();
+                double t = (transitionStartMs <= 0L) ? 0.0 : Math.min(1.0, (now - transitionStartMs) / (double) TRANSITION_MS);
+                // 前半程淡出（0->1），后半程保持黑屏（由 initGame 后自然进入 GAME_RUNNING）
+                float alpha = (float) Math.min(1.0, t * 1.25);
+
+                Composite old = g2d.getComposite();
+                g2d.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, alpha));
+                g2d.setColor(Color.BLACK);
+                g2d.fillRect(0, 0, getWidth(), getHeight());
+                g2d.setComposite(old);
+            }
+
+            // 开始界面/转场绘制完毕
+            if (gameState != GAME_RUNNING) return;
+        }
+
         if (gameState == GAME_RUNNING) {
             // 绘制玩家
             player.draw(g);
@@ -706,9 +825,9 @@ public class GamePanel extends JPanel implements Runnable {
                     shootPressed = true;
                     break;
                 case KeyEvent.VK_R:
-                    // 重新开始游戏
-                    if (gameState == GAME_OVER) {
-                        initGame();
+                    // 开始界面：按 R 进入转场；结束界面：按 R 重新开始（也走转场）
+                    if (gameState == GAME_START || gameState == GAME_OVER) {
+                        startTransitionToGame();
                     }
                     break;
             }
