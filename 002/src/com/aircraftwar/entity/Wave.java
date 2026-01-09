@@ -12,10 +12,18 @@ public class Wave {
     private long startTime;          // 本波开始时间
     private long duration;           // 本波时长（随波次递减，最低15秒）
     private boolean isWaveOver;      // 本波是否结束
+    private com.aircraftwar.entity.DifficultyProfile.DifficultyKey difficulty;
 
     // 构造方法（无尽型，波次难度递增）
+    // 兼容旧构造：默认新手
     public Wave(int waveNumber) {
+        this(waveNumber, com.aircraftwar.entity.DifficultyProfile.DifficultyKey.NEWBIE);
+    }
+
+    // 新构造：带难度
+    public Wave(int waveNumber, com.aircraftwar.entity.DifficultyProfile.DifficultyKey difficulty) {
         this.waveNumber = waveNumber;
+        this.difficulty = (difficulty == null) ? com.aircraftwar.entity.DifficultyProfile.DifficultyKey.NEWBIE : difficulty;
         this.startTime = System.currentTimeMillis();
         // 波次越高，时长越短（最低15秒）
         this.duration = 40000 - (waveNumber * 1000);
@@ -45,7 +53,7 @@ public class Wave {
                 long jitter = Math.max(700, 2200 - waveNumber * 40L);
                 spawnDelay += (base + (long) (Math.random() * jitter));
             }
-            squads.add(new EnemySquad(i + 1, waveNumber, spawnDelay));
+            squads.add(new EnemySquad(i + 1, waveNumber, spawnDelay, this.difficulty));
         }
     }
 
@@ -103,4 +111,8 @@ public class Wave {
     public boolean isWaveOver() { return isWaveOver; }
     public long getDuration() { return duration; }
     public long getStartTime() { return startTime; }
+    public com.aircraftwar.entity.DifficultyProfile.DifficultyKey getDifficulty() {
+        return difficulty;
+    }
 }
+

@@ -30,6 +30,10 @@ public class EnemySquad {
     private int enemyCount;             // 小队敌机数量
     private int waveNumber;             // 所属波次
     private List<EnemyAircraft> enemies;// 小队敌机列表
+
+    // ✅ 难度（由 Wave -> EnemySquad 传入，用于老手/不可能等参数调整）
+    private final com.aircraftwar.entity.DifficultyProfile.DifficultyKey difficulty;
+
     // 新增：标记敌机对象是否已真正创建（lazy spawn）
     private boolean enemiesCreated = false;
 
@@ -146,15 +150,22 @@ public class EnemySquad {
 
     // 构造方法（根据波次生成小队配置，难度递增）
     public EnemySquad(int squadId, int waveNumber, long spawnDelay) {
+        this(squadId, waveNumber, spawnDelay, com.aircraftwar.entity.DifficultyProfile.DifficultyKey.NEWBIE);
+    }
+
+    public EnemySquad(int squadId, int waveNumber, long spawnDelay, com.aircraftwar.entity.DifficultyProfile.DifficultyKey difficulty) {
         this.squadId = squadId;
         this.waveNumber = waveNumber;
         this.spawnDelay = spawnDelay;
+        this.difficulty = (difficulty == null) ? com.aircraftwar.entity.DifficultyProfile.DifficultyKey.NEWBIE : difficulty;
         this.isSpawned = false;
         this.isAllDead = false;
 
-        // 波次越高，小队敌机数越多（1-5架）
+        // 波次越高，小队敌机数越多（1-5架），老手额外 +1（上限仍为5）
         this.enemyCount = 1 + (waveNumber / 2);
+        this.enemyCount += com.aircraftwar.entity.DifficultyProfile.squadEnemyCountBonus(this.difficulty);
         if (enemyCount > 5) enemyCount = 5;
+        if (enemyCount < 1) enemyCount = 1;
 
         // 波次越高，移动速度越快
         this.moveSpeed = 4 + waveNumber;
@@ -295,10 +306,10 @@ public class EnemySquad {
 
         EnemyAircraft enemy;
         if (random.nextDouble() < jellyProb) {
-            enemy = new JellyfishAircraft(waveNumber, x, y);
+            enemy = new JellyfishAircraft(waveNumber, x, y, this.difficulty);
         } else {
             enemy = new EnemyAircraft(
-                    800, 850, moveType, waveNumber, x, y // 修复：panelHeight 应与游戏面板一致
+                    800, 850, moveType, waveNumber, x, y, this.difficulty
             );
         }
         enemies.add(enemy);
@@ -718,6 +729,8 @@ public class EnemySquad {
 
             // 更平滑的俯冲：步进更小一点，整体时间更长，视觉更像“曲线俯冲”
             di.progressStep = 0.020 + random.nextDouble() * 0.007;
+            // 老手：俯冲速度微微增加
+            di.progressStep *= com.aircraftwar.entity.DifficultyProfile.diveSpeedMultiplier(this.difficulty);
 
             // 按你的要求：去掉“同步玩家位置”。
             // 俯冲目标改为：基于当前编队位置向下推进 + 水平侧移（更像雷霆战机的压迫俯冲）

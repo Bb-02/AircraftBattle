@@ -121,6 +121,19 @@ public class GamePanel extends JPanel implements Runnable {
         }
     }
 
+    // 将 UI Difficulty 映射为逻辑层 DifficultyKey（entity 包内的配置层）
+    private com.aircraftwar.entity.DifficultyProfile.DifficultyKey getDifficultyProfileKey() {
+        switch (currentDifficulty) {
+            case VETERAN:
+                return com.aircraftwar.entity.DifficultyProfile.DifficultyKey.VETERAN;
+            case IMPOSSIBLE:
+                return com.aircraftwar.entity.DifficultyProfile.DifficultyKey.IMPOSSIBLE;
+            case NEWBIE:
+            default:
+                return com.aircraftwar.entity.DifficultyProfile.DifficultyKey.NEWBIE;
+        }
+    }
+
     public GamePanel() {
         // 初始化面板
         setPreferredSize(new Dimension(800, 850));
@@ -247,7 +260,8 @@ public class GamePanel extends JPanel implements Runnable {
         // 切换波次时清理按键状态，避免玩家在波次切换瞬间保持按键
         resetInputStates();
 
-        currentWave = new Wave(currentWaveNumber);
+        // 绑定当前难度到波次（后续所有难度差异从这里开始传递）
+        currentWave = new Wave(currentWaveNumber, getDifficultyProfileKey());
 
         // 调试：打印创建波次时的面板尺寸（如果为0，说明尺寸尚未布局完成）
         System.out.println("[Wave] create wave=" + currentWaveNumber + " panel=" + getWidth() + "x" + getHeight());
@@ -944,54 +958,87 @@ public class GamePanel extends JPanel implements Runnable {
             }
 
         } else if (gameState == GAME_OVER) {
-            // 绘制游戏结束标题
-            g2d.setColor(Color.RED);
-            g2d.setFont(new Font("微软雅黑", Font.BOLD, 50));
-            g2d.drawString("GAME OVER", getWidth()/2 - 150, getHeight()/2 - 180);
+            // ===== 排行榜/结算界面：统一居中排版 =====
+            int centerX = getWidth() / 2;
+            int baseY = getHeight() / 2 - 180;
 
-            // 绘制得分/波次信息（支持中文）
+            // 1) GAME OVER
+            Font overFont = chineseBoldFont != null ? chineseBoldFont.deriveFont(Font.BOLD, 56f) : new Font("微软雅黑", Font.BOLD, 56);
+            g2d.setFont(overFont);
+            g2d.setColor(new Color(255, 80, 80));
+            String overText = "GAME OVER";
+            int overX = centerX - g2d.getFontMetrics().stringWidth(overText) / 2;
+            g2d.drawString(overText, overX, baseY);
+
+            // 2) 结算信息
+            Font infoFont = chineseFont != null ? chineseFont.deriveFont(Font.PLAIN, 26f) : new Font("微软雅黑", Font.PLAIN, 26);
+            g2d.setFont(infoFont);
             g2d.setColor(Color.WHITE);
-            g2d.setFont(new Font("微软雅黑", Font.BOLD, 30));
-            g2d.drawString("最终得分: " + score, getWidth()/2 - 100, getHeight()/2 - 100);
-            g2d.drawString("到达波次: " + currentWaveNumber, getWidth()/2 - 100, getHeight()/2 - 50);
-            g2d.drawString("历史最高分: " + ScoreUtil.getHighestScore(getDifficultyKey()), getWidth()/2 - 100, getHeight()/2);
 
-            // 绘制排行榜标题（中文）+ 当前难度
-            g2d.setFont(chineseBoldFont);
-            g2d.drawString("排行榜 Top 5 - " + currentDifficulty.getDisplayName(), getWidth()/2 - 140, getHeight()/2 + 50);
+            String s1 = "最终得分: " + score;
+            String s2 = "到达波次: " + currentWaveNumber;
+            String s3 = "历史最高分: " + ScoreUtil.getHighestScore(getDifficultyKey());
 
-            // 只展示当前难度榜单
-            g2d.setFont(chineseFont);
+            int y = baseY + 70;
+            g2d.drawString(s1, centerX - g2d.getFontMetrics().stringWidth(s1) / 2, y);
+            y += 40;
+            g2d.drawString(s2, centerX - g2d.getFontMetrics().stringWidth(s2) / 2, y);
+            y += 40;
+            g2d.drawString(s3, centerX - g2d.getFontMetrics().stringWidth(s3) / 2, y);
+
+            // 3) 排行榜标题："排行榜 Top 5 - "(白) + 难度名(按难度上色)
+            Font titleFont = chineseBoldFont != null ? chineseBoldFont.deriveFont(Font.BOLD, 28f) : new Font("微软雅黑", Font.BOLD, 28);
+            g2d.setFont(titleFont);
+
+            String titlePrefix = "排行榜 Top 5 - ";
+            String diffName = currentDifficulty.getDisplayName();
+
+            FontMetrics fmTitle = g2d.getFontMetrics();
+            int prefixW = fmTitle.stringWidth(titlePrefix);
+            int diffW = fmTitle.stringWidth(diffName);
+            int titleW = prefixW + diffW;
+            int titleX = centerX - titleW / 2;
+
+            y += 70;
+            g2d.setColor(Color.WHITE);
+            g2d.drawString(titlePrefix, titleX, y);
+            g2d.setColor(currentDifficulty.getColor());
+            g2d.drawString(diffName, titleX + prefixW, y);
+
+            // 4) 排行榜列表
+            g2d.setFont(chineseFont != null ? chineseFont.deriveFont(Font.PLAIN, 22f) : new Font("微软雅黑", Font.PLAIN, 22));
+            g2d.setColor(Color.WHITE);
             List<ScoreRecord> topRecords = ScoreUtil.getTopScores(getDifficultyKey());
 
-            // ========== 核心修复2：正确计算中文文本宽度，避免偏移 ==========
-            g2d.setFont(chineseFont);
-            int yOffset = 0;
-            for (int i = 0; i < Math.min(topRecords.size(), 5); i++) {
-                yOffset += 30;
-                ScoreRecord record = topRecords.get(i);
-                String rankText = String.format("%d. %s - %d", i+1, record.getNickname(), record.getScore());
-
-                FontMetrics fm = g2d.getFontMetrics();
-                int textWidth = fm.stringWidth(rankText);
-                int textX = (getWidth() - textWidth) / 2;
-
-                g2d.drawString(rankText, textX, getHeight()/2 + 50 + yOffset);
+            int listY = y + 45;
+            int lineGap = 32;
+            int max = Math.min(topRecords.size(), 5);
+            if (max == 0) {
+                String empty = "暂无记录";
+                g2d.drawString(empty, centerX - g2d.getFontMetrics().stringWidth(empty) / 2, listY);
+                listY += lineGap;
+            } else {
+                for (int i = 0; i < max; i++) {
+                    ScoreRecord record = topRecords.get(i);
+                    String rankText = String.format("%d. %s  -  %d", i + 1, record.getNickname(), record.getScore());
+                    int x = centerX - g2d.getFontMetrics().stringWidth(rankText) / 2;
+                    g2d.drawString(rankText, x, listY);
+                    listY += lineGap;
+                }
             }
 
-            // 绘制重启提示（中文）
-            g2d.setFont(chineseFont);
-            String restartText = "按 R 键开始新游戏";
-            int restartWidth = g2d.getFontMetrics().stringWidth(restartText);
-            int restartX = (getWidth() - restartWidth) / 2;
-            g2d.drawString(restartText, restartX, getHeight()/2 + 50 + yOffset + 30);
+            // 5) 操作提示
+            g2d.setFont(chineseFont != null ? chineseFont.deriveFont(Font.PLAIN, 20f) : new Font("微软雅黑", Font.PLAIN, 20));
+            g2d.setColor(new Color(255, 255, 255, 230));
 
-            // 额外：返回开始界面提示
-            g2d.setFont(chineseFont);
+            String restartText = "按 R 键开始新游戏";
             String backText = "按 Q 返回开始界面";
-            int backWidth = g2d.getFontMetrics().stringWidth(backText);
-            int backX = (getWidth() - backWidth) / 2;
-            g2d.drawString(backText, backX, getHeight()/2 + 50 + yOffset + 60);
+
+            int rx = centerX - g2d.getFontMetrics().stringWidth(restartText) / 2;
+            int bx = centerX - g2d.getFontMetrics().stringWidth(backText) / 2;
+
+            g2d.drawString(restartText, rx, listY + 10);
+            g2d.drawString(backText, bx, listY + 10 + 30);
         }
 
         // 还原 translate，避免影响 Swing 后续绘制

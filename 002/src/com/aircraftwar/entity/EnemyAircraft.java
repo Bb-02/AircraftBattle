@@ -38,11 +38,14 @@ public class EnemyAircraft extends Aircraft {
     private boolean isEscaping;
     private int escapeSpeed = 10;
 
+    private com.aircraftwar.entity.DifficultyProfile.DifficultyKey difficulty = com.aircraftwar.entity.DifficultyProfile.DifficultyKey.NEWBIE;
+
     // 构造方法支持传入初始位置（核心：初始化waveNumber + 加载图片）
-    public EnemyAircraft(int panelWidth, int panelHeight, EnemyMoveType moveType, int waveNumber, int initX, int initY) {
+    public EnemyAircraft(int panelWidth, int panelHeight, EnemyMoveType moveType, int waveNumber, int initX, int initY, com.aircraftwar.entity.DifficultyProfile.DifficultyKey difficulty) {
         super(initX, initY, 2 + waveNumber, 1, ENEMY_WIDTH, ENEMY_HEIGHT);
 
         this.waveNumber = waveNumber;
+        this.difficulty = (difficulty == null) ? com.aircraftwar.entity.DifficultyProfile.DifficultyKey.NEWBIE : difficulty;
 
         // 加载敌机图片 + 日志
         System.out.println("[EnemyAircraft] 开始加载 Enemy1.png");
@@ -55,10 +58,14 @@ public class EnemyAircraft extends Aircraft {
 
         // 子弹初始化（原有逻辑）
         this.bullets = new ArrayList<>();
-        this.shootInterval = 3000 - (waveNumber * 200);
-        if (shootInterval < 800) {
-            shootInterval = 800;
+        long baseInterval = 3000 - (waveNumber * 200);
+        if (baseInterval < 800) {
+            baseInterval = 800;
         }
+        // 老手：射击更频繁 -> 缩短间隔
+        double mult = com.aircraftwar.entity.DifficultyProfile.enemyShootIntervalMultiplier(this.difficulty);
+        this.shootInterval = (long) Math.max(200, Math.round(baseInterval * mult));
+
         this.lastShootTime = System.currentTimeMillis();
 
         // 移动初始化（原有逻辑）
@@ -67,11 +74,17 @@ public class EnemyAircraft extends Aircraft {
         this.isEscaping = false;
     }
 
+    // 兼容旧构造（默认新手）
+    public EnemyAircraft(int panelWidth, int panelHeight, EnemyMoveType moveType, int waveNumber, int initX, int initY) {
+        this(panelWidth, panelHeight, moveType, waveNumber, initX, initY, com.aircraftwar.entity.DifficultyProfile.DifficultyKey.NEWBIE);
+    }
+
     // 兼容旧构造方法（避免报错）
     public EnemyAircraft(int panelWidth, int panelHeight, EnemyMoveType moveType, int waveNumber) {
         this(panelWidth, panelHeight, moveType, waveNumber,
                 random.nextInt(Math.max(1, panelWidth - ENEMY_WIDTH)),
-                random.nextInt(Math.max(1, 150)) + 20);
+                random.nextInt(Math.max(1, 150)) + 20,
+                com.aircraftwar.entity.DifficultyProfile.DifficultyKey.NEWBIE);
     }
 
     // 敌机移动逻辑（原有逻辑完全保留）
