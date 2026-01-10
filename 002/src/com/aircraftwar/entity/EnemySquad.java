@@ -341,15 +341,16 @@ public class EnemySquad {
         // Jellyfish 概率：波次越高出现概率越大（上限 35%）
         double jellyProb = Math.min(0.10 + waveNumber * 0.03, 0.35);
 
-        EnemyAircraft enemy;
-        if (random.nextDouble() < jellyProb) {
-            enemy = new JellyfishAircraft(waveNumber, x, y, this.difficulty);
-        } else {
-            enemy = new EnemyAircraft(
-                    GameConfig.SCREEN_WIDTH, GameConfig.SCREEN_HEIGHT, moveType, waveNumber, x, y, this.difficulty
-            );
-        }
-        enemies.add(enemy);
+         EnemyAircraft enemy;
+         double r = random.nextDouble();
+         if (r < jellyProb) {
+             enemy = new JellyfishAircraft(waveNumber, x, y, this.difficulty);
+         } else {
+             enemy = new EnemyAircraft(
+                     GameConfig.SCREEN_WIDTH, GameConfig.SCREEN_HEIGHT, moveType, waveNumber, x, y, this.difficulty
+             );
+         }
+         enemies.add(enemy);
     }
 
     // 检查小队是否到生成时间
@@ -789,6 +790,9 @@ public class EnemySquad {
                         if (e instanceof JellyfishAircraft) {
                             // Jellyfish：不要强杀，改为慢慢向上逃跑退场
                             e.setEscaping(true);
+                        } else if (e instanceof BeeAircraft) {
+                            // Bee：退场与 Jellyfish 一致，向上缓慢逃跑
+                            ((BeeAircraft) e).startEscapeUp();
                         } else {
                             e.hit(9999);
                         }

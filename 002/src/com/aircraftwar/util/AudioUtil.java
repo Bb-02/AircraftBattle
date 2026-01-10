@@ -10,36 +10,36 @@ import java.io.IOException;
  * 音频工具类（桥接到 SoundManager，保持向后兼容）
  */
 public class AudioUtil {
-    // 音频文件路径（可根据实际路径调整，此处为相对路径示例）
-    private static final String SHOOT_SOUND_PATH = "sounds/shoot.wav";
-    private static final String EXPLODE_SOUND_PATH = "sounds/explode.wav";
-    private static final String PLAYER_DEAD_SOUND_PATH = "sounds/player_dead.wav";
-    private static final String GAME_OVER_SOUND_PATH = "sounds/game_over.wav";
-    private static final String BG_MUSIC_PATH = "sounds/bg_music.wav";
+    // 音频文件名（由 ResourceUtil 统一解析到工程根 sounds 目录）
+    private static final String SHOOT_SOUND = "shoot.wav";
+    private static final String EXPLODE_SOUND = "explode.wav";
+    private static final String PLAYER_DEAD_SOUND = "player_dead.wav";
+    private static final String GAME_OVER_SOUND = "game_over.wav";
+    private static final String BG_MUSIC = "bg_music.wav";
 
     // 兼容旧 API：播放射击音效（玩家发射子弹）
     public static void playShootSound() {
-        SoundManager.getInstance().playSound(SHOOT_SOUND_PATH, 1.0f);
+        SoundManager.getInstance().playSound(ResourceUtil.soundFile(SHOOT_SOUND).getPath(), 1.0f);
     }
 
     // 播放爆炸音效（敌机被击中）
     public static void playExplodeSound() {
-        SoundManager.getInstance().playSound(EXPLODE_SOUND_PATH, 1.0f);
+        SoundManager.getInstance().playSound(ResourceUtil.soundFile(EXPLODE_SOUND).getPath(), 1.0f);
     }
 
     // 播放玩家死亡音效
     public static void playPlayerDeadSound() {
-        SoundManager.getInstance().playSound(PLAYER_DEAD_SOUND_PATH, 1.0f);
+        SoundManager.getInstance().playSound(ResourceUtil.soundFile(PLAYER_DEAD_SOUND).getPath(), 1.0f);
     }
 
     // 播放游戏结束音效
     public static void playGameOverSound() {
-        SoundManager.getInstance().playSound(GAME_OVER_SOUND_PATH, 1.0f);
+        SoundManager.getInstance().playSound(ResourceUtil.soundFile(GAME_OVER_SOUND).getPath(), 1.0f);
     }
 
     // 播放背景音乐（循环）
     public static void playBGM() {
-        SoundManager.getInstance().playBgm(BG_MUSIC_PATH, true);
+        SoundManager.getInstance().playBgm(ResourceUtil.soundFile(BG_MUSIC).getPath(), true);
     }
 
     // 停止背景音乐

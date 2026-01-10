@@ -15,7 +15,7 @@ public class PlayerAircraft extends Aircraft {
     private long lastShootTime;
 
     // 玩家射击间隔（ms）：数值越大射速越慢
-    private long shootInterval = 300;
+    private long shootInterval = 290;
 
     // 玩家飞机尺寸（和图片适配）
     private static final int PLAYER_WIDTH = 40;

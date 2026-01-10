@@ -9,8 +9,6 @@ import com.aircraftwar.event.events.FireEvent;
 import com.aircraftwar.event.events.SoundEvent;
 import com.aircraftwar.util.GameConfig;
 
-import javax.imageio.ImageIO;
-import javax.swing.*;
 import java.awt.*;
 import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
@@ -19,14 +17,20 @@ import java.awt.event.WindowEvent;
 import java.awt.event.FocusAdapter;
 import java.awt.event.FocusEvent;
 import java.awt.image.BufferedImage;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
-
-
+import javax.swing.JButton;
+import javax.swing.JTextField;
+import javax.swing.BorderFactory;
+import javax.swing.Box;
+import javax.swing.BoxLayout;
 import javax.swing.event.DocumentListener;
 import javax.swing.event.DocumentEvent;
+import javax.swing.JPanel;
+import javax.swing.JDialog;
+import javax.swing.JLabel;
+import javax.swing.SwingUtilities;
 /**
  * 游戏主面板（集成雷霆战机风格小队化+无尽逻辑）
  */
@@ -666,51 +670,14 @@ public class GamePanel extends JPanel implements Runnable {
     }
     // 在 GamePanel 类内，添加字段并在构造器中加载图片
     public void loadBackground() {
-        // 先尝试从 classpath 加载（需要 images 目录在 classpath 下，例如 resources 或 标记为 Resources Root）
-        try {
-            java.net.URL url = getClass().getResource("/images/Background.png");
-            if (url != null) {
-                backgroundImage = ImageIO.read(url);
-                return;
-            }
-        } catch (IOException ignored) {
-            // 继续尝试文件路径回退
-        }
-
-        // 回退：直接从项目相对文件系统路径加载（开发时方便，打包后请使用 classpath）
-        try {
-            java.io.File f = new java.io.File("images/Background.png");
-            if (f.exists()) {
-                backgroundImage = ImageIO.read(f);
-                return;
-            }
-        } catch (IOException ignored) {
-        }
-
-        // 都失败时设为 null（画面会用纯色兜底）
-        backgroundImage = null;
+        // 统一走 ImageUtil（文件系统优先，classpath 兜底）
+        backgroundImage = com.aircraftwar.util.ImageUtil.loadImage("Background.png");
     }
+
     // 开始界面背景
     private void loadStartBackground() {
-        try {
-            java.net.URL url = getClass().getResource("/images/Background2.png");
-            if (url != null) {
-                startBackgroundImage = ImageIO.read(url);
-                return;
-            }
-        } catch (IOException ignored) {
-        }
-
-        try {
-            java.io.File f = new java.io.File("images/Background2.png");
-            if (f.exists()) {
-                startBackgroundImage = ImageIO.read(f);
-                return;
-            }
-        } catch (IOException ignored) {
-        }
-
-        startBackgroundImage = null;
+        // 统一走 ImageUtil（文件系统优先，classpath 兜底）
+        startBackgroundImage = com.aircraftwar.util.ImageUtil.loadImage("Background2.png");
     }
 
     // 绘制游戏界面（新增小队/波次信息）
@@ -916,6 +883,14 @@ public class GamePanel extends JPanel implements Runnable {
                     for (EnemyAircraft enemy : squad.getEnemies()) {
                         enemy.draw(g);
                     }
+                }
+            }
+
+            // 绘制独立敌人（Bee 等不属于小队的敌人）
+            // 注意：Bee 已在 Wave.getAllEnemies() 中参与碰撞，这里只负责渲染
+            for (BeeAircraft bee : currentWave.getIndependentBees()) {
+                if (bee != null && bee.isAlive()) {
+                    bee.draw(g);
                 }
             }
 

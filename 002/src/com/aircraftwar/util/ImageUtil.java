@@ -28,34 +28,34 @@ public class ImageUtil {
         }
 
         BufferedImage image = null;
-        String resourcePath = "images/" + fileName;
 
-        // 2. 尝试「类路径加载」（适配IDEA/Eclipse运行）
-        System.out.println("[ImageUtil] 尝试类路径加载：" + resourcePath);
-        try (InputStream is = ImageUtil.class.getClassLoader().getResourceAsStream(resourcePath)) {
-            if (is == null) {
-                System.out.println("[ImageUtil] ❌ 类路径中找不到：" + resourcePath);
+        // 2. ✅ 优先「文件系统加载」（匹配当前项目资源放在工程根/images）
+        File imageFile = ResourceUtil.imageFile(fileName);
+        System.out.println("[ImageUtil] 尝试文件路径加载：" + imageFile.getAbsolutePath() + " (root=" + ResourceUtil.debugRoot() + ")");
+        try {
+            if (!imageFile.exists()) {
+                System.out.println("[ImageUtil] ❌ 文件不存在：" + imageFile.getAbsolutePath());
             } else {
-                image = ImageIO.read(is);
-                System.out.println("[ImageUtil] ✅ 类路径加载成功：" + fileName + "，尺寸：" + image.getWidth() + "x" + image.getHeight());
+                image = ImageIO.read(imageFile);
+                System.out.println("[ImageUtil] ✅ 文件路径加载成功：" + fileName + "，尺寸：" + image.getWidth() + "x" + image.getHeight());
             }
         } catch (IOException e) {
-            System.out.println("[ImageUtil] ❌ 类路径加载失败：" + fileName + "，原因：" + e.getMessage());
+            System.out.println("[ImageUtil] ❌ 文件路径加载失败：" + fileName + "，原因：" + e.getMessage());
         }
 
-        // 3. 类路径失败 → 尝试「项目根目录文件加载」
+        // 3. 兜底：尝试「类路径加载」（将来打包成 jar / 标记 Resources Root 时可用）
         if (image == null) {
-            File imageFile = new File(resourcePath);
-            System.out.println("[ImageUtil] 尝试文件路径加载：" + imageFile.getAbsolutePath());
-            try {
-                if (!imageFile.exists()) {
-                    System.out.println("[ImageUtil] ❌ 文件不存在：" + imageFile.getAbsolutePath());
+            String resourcePath = "images/" + fileName;
+            System.out.println("[ImageUtil] 尝试类路径加载：" + resourcePath);
+            try (InputStream is = ImageUtil.class.getClassLoader().getResourceAsStream(resourcePath)) {
+                if (is == null) {
+                    System.out.println("[ImageUtil] ❌ 类路径中找不到：" + resourcePath);
                 } else {
-                    image = ImageIO.read(imageFile);
-                    System.out.println("[ImageUtil] ✅ 文件路径加载成功：" + fileName + "，尺寸：" + image.getWidth() + "x" + image.getHeight());
+                    image = ImageIO.read(is);
+                    System.out.println("[ImageUtil] ✅ 类路径加载成功：" + fileName + "，尺寸：" + image.getWidth() + "x" + image.getHeight());
                 }
             } catch (IOException e) {
-                System.out.println("[ImageUtil] ❌ 文件路径加载失败：" + fileName + "，原因：" + e.getMessage());
+                System.out.println("[ImageUtil] ❌ 类路径加载失败：" + fileName + "，原因：" + e.getMessage());
             }
         }
 

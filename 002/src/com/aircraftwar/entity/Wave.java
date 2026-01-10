@@ -9,6 +9,12 @@ import java.util.List;
 public class Wave {
     private int waveNumber;          // 波次编号（无限递增）
     private List<EnemySquad> squads; // 本波小队列表
+
+    // ===== 独立敌人：Bee（不属于小队，更像“独立怪”） =====
+    private final List<BeeAircraft> independentBees = new ArrayList<>();
+    private long nextBeeSpawnAtMs = 0L;
+    private int spawnedBeeCount = 0;
+
     private long startTime;          // 本波开始时间
     private long duration;           // 本波时长（随波次递减，最低15秒）
     private boolean isWaveOver;      // 本波是否结束
@@ -25,6 +31,8 @@ public class Wave {
         this.waveNumber = waveNumber;
         this.difficulty = (difficulty == null) ? com.aircraftwar.entity.DifficultyProfile.DifficultyKey.NEWBIE : difficulty;
         this.startTime = System.currentTimeMillis();
+        this.nextBeeSpawnAtMs = this.startTime + 1200; // 开局延后一点，避免一开始就太挤
+        this.spawnedBeeCount = 0;
         // 波次越高，时长越短（最低15秒）
         this.duration = 40000 - (waveNumber * 1000);
         if (duration < 15000) duration = 15000;
@@ -77,6 +85,49 @@ public class Wave {
         }
     }
 
+    // ===== Bee 独立生成逻辑 =====
+    private int getBeeMaxPerWave() {
+        // 每波最多多少只独立 Bee。随难度略升，随波次略升但有上限
+        int base = 1 + Math.min(2, waveNumber / 4); // 1~3
+        if (difficulty == com.aircraftwar.entity.DifficultyProfile.DifficultyKey.VETERAN) base += 1;
+        if (difficulty == com.aircraftwar.entity.DifficultyProfile.DifficultyKey.IMPOSSIBLE) base += 2;
+        return Math.min(base, 6);
+    }
+
+    private long nextBeeIntervalMs() {
+        // 越难 -> 越快；波次越高 -> 稍快，但不要太夸张
+        long base;
+        if (difficulty == com.aircraftwar.entity.DifficultyProfile.DifficultyKey.IMPOSSIBLE) {
+            base = 1600 + (long) (Math.random() * 900);   // 1.6~2.5s
+        } else if (difficulty == com.aircraftwar.entity.DifficultyProfile.DifficultyKey.VETERAN) {
+            base = 2100 + (long) (Math.random() * 1000);  // 2.1~3.1s
+        } else {
+            base = 2800 + (long) (Math.random() * 1200);  // 2.8~4.0s
+        }
+        long waveTrim = Math.min(900, waveNumber * 60L);
+        return Math.max(900, base - waveTrim);
+    }
+
+    private void trySpawnIndependentBee(long now) {
+        if (isWaveOver) return;
+        if (spawnedBeeCount >= getBeeMaxPerWave()) return;
+        if (now < nextBeeSpawnAtMs) return;
+
+        int w = com.aircraftwar.util.GameConfig.SCREEN_WIDTH;
+
+        // 出场：更像敌机小队那种“突然进入战斗区域”的感觉
+        // 直接生成在屏幕上方可见范围（靠近小队 ENTER 目标高度），避免屏幕外开火/等待太久
+        int initX = com.aircraftwar.util.GameConfig.BOUNDARY_PADDING + (int) (Math.random() * (w - com.aircraftwar.util.GameConfig.BOUNDARY_PADDING * 2));
+        int initY = 70 + (int) (Math.random() * 40); // 70~109
+
+        BeeAircraft bee = new BeeAircraft(waveNumber, initX, initY, difficulty);
+        // Bee 自己 move() 会平滑运动并射击；这里仅纳入管理
+        independentBees.add(bee);
+        spawnedBeeCount++;
+
+        nextBeeSpawnAtMs = now + nextBeeIntervalMs();
+    }
+
     // 检查本波是否结束（所有小队全灭 OR 时间结束）
     public void checkWaveOver() {
         // 时间结束：标记波次结束
@@ -90,18 +141,29 @@ public class Wave {
                     });
                 }
             }
+
+            // Bee 也开始向上退场
+            for (BeeAircraft bee : independentBees) {
+                if (bee != null && bee.isAlive()) {
+                    bee.startEscapeUp();
+                }
+            }
             return;
         }
 
         // 所有小队全灭：标记波次结束
         boolean allSquadsDead = squads.stream().allMatch(EnemySquad::isAllDead);
-        if (allSquadsDead && !isWaveOver) {
+        // 独立 Bee 也需要全部消失，才算“清场结束”
+        boolean allBeesGone = independentBees.stream().noneMatch(b -> b != null && b.isAlive());
+        if (allSquadsDead && allBeesGone && !isWaveOver) {
             isWaveOver = true;
         }
     }
 
     // 更新本波所有小队
     public void updateWave() {
+        long now = System.currentTimeMillis();
+
         // 检查小队生成
         for (EnemySquad squad : squads) {
             squad.checkSpawn(startTime);
@@ -110,6 +172,27 @@ public class Wave {
             // 更新小队子弹
             squad.updateSquadBullets();
         }
+
+        // 独立 Bee：按难度/波次调度生成，并更新移动与子弹
+        trySpawnIndependentBee(now);
+        // 注意：Bee 死亡后仍要让残留子弹继续飞行直到越界，所以不能立刻移除 Bee 对象。
+        // 这里的策略：
+        // - Bee 活着：正常 move + updateBullets
+        // - Bee 死亡：只 updateBullets；当 bullets 清空后才移除该 Bee
+        independentBees.removeIf(b -> {
+            if (b == null) return true;
+            if (b.isAlive()) return false;
+            // 已死亡：若没有任何残留子弹，则可以移除
+            List<IBullet> bs = b.getBullets();
+            return bs == null || bs.isEmpty();
+        });
+        for (BeeAircraft bee : independentBees) {
+            if (bee.isAlive()) {
+                bee.move();
+            }
+            bee.updateBullets();
+        }
+
         // 检查波次是否结束
         checkWaveOver();
     }
@@ -122,8 +205,14 @@ public class Wave {
                 allEnemies.addAll(squad.getEnemies());
             }
         }
+
+        // Bee 作为 EnemyAircraft 子类，也加入碰撞检测
+        allEnemies.addAll(independentBees);
         return allEnemies;
     }
+
+    // 供 UI/调试：独立 Bee 列表
+    public List<BeeAircraft> getIndependentBees() { return independentBees; }
 
     // Getter & Setter
     public int getWaveNumber() { return waveNumber; }
