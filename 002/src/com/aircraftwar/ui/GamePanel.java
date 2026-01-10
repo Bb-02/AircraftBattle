@@ -238,6 +238,10 @@ public class GamePanel extends JPanel implements Runnable {
         // 创建玩家飞机（居中底部）
         player = new PlayerAircraft(400 - 20, 500);
 
+        // ✅ 同步难度到升级系统，并清理该玩家的升级计数（避免串局）
+        com.aircraftwar.upgrade.UpgradeManager.getInstance().setDifficulty(getDifficultyProfileKey());
+        com.aircraftwar.upgrade.UpgradeManager.getInstance().resetForPlayer(player);
+
         // 初始化爆炸列表
         explosions = new ArrayList<>();
 

@@ -164,7 +164,10 @@ public class EnemySquad {
         // 波次越高，小队敌机数越多（1-5架），老手额外 +1（上限仍为5）
         this.enemyCount = 1 + (waveNumber / 2);
         this.enemyCount += com.aircraftwar.entity.DifficultyProfile.squadEnemyCountBonus(this.difficulty);
-        if (enemyCount > 5) enemyCount = 5;
+
+        // IMPOSSIBLE：允许更大编队（否则加成会被硬截断掉）
+        int maxEnemyCount = (this.difficulty == com.aircraftwar.entity.DifficultyProfile.DifficultyKey.IMPOSSIBLE) ? 6 : 5;
+        if (enemyCount > maxEnemyCount) enemyCount = maxEnemyCount;
         if (enemyCount < 1) enemyCount = 1;
 
         // 波次越高，移动速度越快
@@ -711,8 +714,16 @@ public class EnemySquad {
         }
         if (alive.isEmpty()) return;
 
-        int maxDivers = Math.min(3, alive.size());
-        int divers = 1 + random.nextInt(maxDivers);
+        boolean impossible = (this.difficulty == com.aircraftwar.entity.DifficultyProfile.DifficultyKey.IMPOSSIBLE);
+
+        int maxDivers = Math.min(impossible ? 4 : 3, alive.size());
+        int divers;
+        if (impossible) {
+            // 不可能：更常见的“双机/多机俯冲”
+            divers = (maxDivers <= 1) ? 1 : (2 + random.nextInt(maxDivers - 1));
+        } else {
+            divers = 1 + random.nextInt(maxDivers);
+        }
 
         for (int i = 0; i < divers; i++) {
             EnemyAircraft e = alive.get(random.nextInt(alive.size()));
@@ -728,8 +739,12 @@ public class EnemySquad {
             di.progress = 0.0;
 
             // 更平滑的俯冲：步进更小一点，整体时间更长，视觉更像“曲线俯冲”
-            di.progressStep = 0.020 + random.nextDouble() * 0.007;
-            // 老手：俯冲速度微微增加
+            if (impossible) {
+                di.progressStep = 0.024 + random.nextDouble() * 0.010;
+            } else {
+                di.progressStep = 0.020 + random.nextDouble() * 0.007;
+            }
+            // 老手/不可能：俯冲速度倍率
             di.progressStep *= com.aircraftwar.entity.DifficultyProfile.diveSpeedMultiplier(this.difficulty);
 
             // 按你的要求：去掉“同步玩家位置”。
@@ -738,12 +753,24 @@ public class EnemySquad {
             int baseCenterY = (int) Math.round(baseYf);
 
             int side = random.nextBoolean() ? 1 : -1;
-            int lateral = (70 + random.nextInt(120)) * side; // 70~189 像素侧移
+            int lateral;
+            if (impossible) {
+                lateral = (110 + random.nextInt(160)) * side; // 110~269
+            } else {
+                lateral = (70 + random.nextInt(120)) * side; // 70~189
+            }
             di.diveTargetX = Math.max(boundary, Math.min(panelWidth - boundary, baseCenterX + lateral));
 
-            int depth = 260 + random.nextInt(200); // 向下推进深度
+            int depth;
+            if (impossible) {
+                depth = 340 + random.nextInt(280); // 更深的向下推进
+            } else {
+                depth = 260 + random.nextInt(200);
+            }
+
             int targetY = baseCenterY + depth;
-            di.diveTargetY = Math.min(targetY, DIVE_MAX_Y);
+            int diveMaxY = impossible ? 800 : DIVE_MAX_Y;
+            di.diveTargetY = Math.min(targetY, diveMaxY);
         }
     }
 

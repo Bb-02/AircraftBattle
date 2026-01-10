@@ -31,28 +31,43 @@ public class Wave {
         this.isWaveOver = false;
 
         // 生成本波小队列表（波次越高，小队数越多）
-        // 调整：整体 +1，提高同屏威胁；前几波更紧凑
         int squadCount = 3 + (waveNumber / 3);
         if (waveNumber <= 1) squadCount = 4; // 开局更紧凑
         if (waveNumber <= 3 && squadCount < 5) squadCount = 5; // 1~3 波适当加压
-        if (squadCount > 7) squadCount = 7;
+
+        // 难度额外加压：不可能 -> 每波多 1~2 个小队（上限也更高）
+        int maxSquads = 7;
+        if (this.difficulty == com.aircraftwar.entity.DifficultyProfile.DifficultyKey.IMPOSSIBLE) {
+            squadCount += 2;
+            maxSquads = 9;
+        }
+        if (squadCount > maxSquads) squadCount = maxSquads;
+
         this.squads = new ArrayList<>();
 
-        // 小队按时间间隔生成：前期更快，后期也逐步变快一些
+        // 小队按时间间隔生成：不可能更密集
+        double spawnMult = 1.0;
+        if (this.difficulty == com.aircraftwar.entity.DifficultyProfile.DifficultyKey.IMPOSSIBLE) {
+            spawnMult = 0.82; // 生成更快、更密
+        }
+
         long spawnDelay = 0;
         for (int i = 0; i < squadCount; i++) {
+            long add;
             if (waveNumber <= 1) {
                 // 0.8-1.4s：开局更有压迫感
-                spawnDelay += (1000 + (long) (Math.random() * 600));
+                add = (1000 + (long) (Math.random() * 600));
             } else if (waveNumber <= 3) {
                 // 1.0-2.0s：前几波更密集
-                spawnDelay += (1000 + (long) (Math.random() * 1000));
+                add = (1000 + (long) (Math.random() * 1000));
             } else {
                 // 随波次稍微缩短生成间隔（下限兜底），避免后期变“空窗期”
                 long base = Math.max(900, 1700 - waveNumber * 60L);
                 long jitter = Math.max(700, 2200 - waveNumber * 40L);
-                spawnDelay += (base + (long) (Math.random() * jitter));
+                add = (base + (long) (Math.random() * jitter));
             }
+
+            spawnDelay += (long) Math.max(250, Math.round(add * spawnMult));
             squads.add(new EnemySquad(i + 1, waveNumber, spawnDelay, this.difficulty));
         }
     }
@@ -115,4 +130,3 @@ public class Wave {
         return difficulty;
     }
 }
-

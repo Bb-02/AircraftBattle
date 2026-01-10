@@ -1,5 +1,6 @@
 package com.aircraftwar.upgrade;
 
+import com.aircraftwar.entity.DifficultyProfile;
 import com.aircraftwar.entity.PlayerAircraft;
 import com.aircraftwar.event.EventBus;
 import com.aircraftwar.event.events.ScoreChangedEvent;
@@ -16,6 +17,9 @@ public class UpgradeManager {
     private static final UpgradeManager INSTANCE = new UpgradeManager();
     private final Map<PlayerAircraft, Integer> appliedCount = new HashMap<>();
 
+    // 当前局的难度（用于升级门槛倍率）
+    private volatile DifficultyProfile.DifficultyKey difficulty = DifficultyProfile.DifficultyKey.NEWBIE;
+
     // 升级触发：首次 300 分；之后门槛逐渐提高（温和二次增长）
     private static final int FIRST_THRESHOLD = 300;
     private static final int MAX_THRESHOLD_SCORE = 10_000; // 期望：1w 分前能把可升级项升满
@@ -25,6 +29,20 @@ public class UpgradeManager {
     }
 
     public static UpgradeManager getInstance() { return INSTANCE; }
+
+    /**
+     * 每局开局/难度切换时调用，用于让升级门槛随难度变化。
+     */
+    public void setDifficulty(DifficultyProfile.DifficultyKey difficulty) {
+        this.difficulty = (difficulty == null) ? DifficultyProfile.DifficultyKey.NEWBIE : difficulty;
+    }
+
+    /**
+     * 开新一局时建议调用，避免 PlayerAircraft 对象复用导致 appliedCount 延续。
+     */
+    public void resetForPlayer(PlayerAircraft p) {
+        if (p != null) appliedCount.remove(p);
+    }
 
     /**
      * 是否该玩家该升级项已满级
@@ -53,16 +71,16 @@ public class UpgradeManager {
 
     /**
      * 计算“下一次升级弹窗”需要达到的分数。
-     * 目标：前期不频繁打断，后期更难；但总体不会把升级周期拉太长（1w 分前基本能升满）。
      */
     private int nextUpgradeScore(int appliedTimes) {
         int n = Math.max(0, appliedTimes);
 
-        // 更“后期变难”的二次：score = 300 + 700*n^2
-        // n=0 -> 300
-        // n=1 -> 1000
-        // n=2 -> 3100（略高于 2500，但更符合“稍难一点”的诉求；如需更贴近 2500 可再微调系数）
-        int score = FIRST_THRESHOLD + 700 * n * n;
+        // 二次：score = 300 + 700*n^2
+        int base = FIRST_THRESHOLD + 700 * n * n;
+
+        // 难度倍率：不可能/老手更难升级
+        double mult = DifficultyProfile.upgradeThresholdMultiplier(this.difficulty);
+        int score = (int) Math.round(base * mult);
 
         return Math.min(score, MAX_THRESHOLD_SCORE);
     }
