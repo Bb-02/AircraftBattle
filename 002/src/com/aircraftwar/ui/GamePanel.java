@@ -889,7 +889,8 @@ public class GamePanel extends JPanel implements Runnable {
             // 绘制独立敌人（Bee 等不属于小队的敌人）
             // 注意：Bee 已在 Wave.getAllEnemies() 中参与碰撞，这里只负责渲染
             for (BeeAircraft bee : currentWave.getIndependentBees()) {
-                if (bee != null && bee.isAlive()) {
+                if (bee != null) {
+                    // Bee.draw() 已实现：机体只在存活时绘制，但子弹不依赖存活
                     bee.draw(g);
                 }
             }

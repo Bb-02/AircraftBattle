@@ -29,7 +29,7 @@ public class UpgradeDialog extends JDialog {
 
         UpgradeManager um = UpgradeManager.getInstance();
 
-        JPanel center = new JPanel(new GridLayout(1,2,10,10));
+        JPanel center = new JPanel(new GridLayout(1,3,10,10));
 
         // FIRE
         String fireText = UpgradeOption.FIRE.getLabel() + "  lv" + player.getFireLevel() + "/" + player.getMaxFireLevel();
@@ -47,6 +47,14 @@ public class UpgradeDialog extends JDialog {
             b2.setEnabled(false);
         }
 
+        // FIRE_RATE
+        String frText = UpgradeOption.FIRE_RATE.getLabel() + "  lv" + player.getFireRateLevel() + "/" + player.getMaxFireRateLevel();
+        JButton b3 = new JButton(frText);
+        if (um.isMaxed(player, UpgradeOption.FIRE_RATE)) {
+            b3.setText(UpgradeOption.FIRE_RATE.getLabel() + "  MAX");
+            b3.setEnabled(false);
+        }
+
         // 图标
         BufferedImage iconFire = ImageUtil.loadImage("BulletUpgrade.png");
         if (iconFire != null) {
@@ -62,13 +70,22 @@ public class UpgradeDialog extends JDialog {
             b2.setVerticalTextPosition(SwingConstants.BOTTOM);
         }
 
+        BufferedImage iconFR = ImageUtil.loadImage("FiringRateUpgrade.png");
+        if (iconFR != null) {
+            b3.setIcon(new ImageIcon(iconFR.getScaledInstance(48, 48, Image.SCALE_SMOOTH)));
+            b3.setHorizontalTextPosition(SwingConstants.CENTER);
+            b3.setVerticalTextPosition(SwingConstants.BOTTOM);
+        }
+
         center.add(b1);
         center.add(b2);
+        center.add(b3);
         add(center, BorderLayout.CENTER);
 
-        // choice 与 UpgradeOption.values() 的顺序保持一致：0=FIRE, 1=SPEED
+        // choice 与 UpgradeOption.values() 的顺序保持一致：0=FIRE, 1=SPEED, 2=FIRE_RATE
         b1.addActionListener(e -> { choice = 0; dispose(); });
         b2.addActionListener(e -> { choice = 1; dispose(); });
+        b3.addActionListener(e -> { choice = 2; dispose(); });
 
         JPanel foot = new JPanel();
         JButton cancel = new JButton("取消");

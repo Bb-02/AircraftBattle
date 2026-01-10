@@ -17,6 +17,14 @@ public class PlayerAircraft extends Aircraft {
     // 玩家射击间隔（ms）：数值越大射速越慢
     private long shootInterval = 290;
 
+    // ===== 升级：射速等级 lv1..lv3（初始 lv1） =====
+    private int fireRateLevel = 1;
+    private static final int MAX_FIRE_RATE_LEVEL = 3;
+    // “每次升级射速增加20”：在本项目中 shootInterval 以 ms 表示，所以实现为每级减少 20ms
+    private static final int FIRE_RATE_PER_LEVEL_MS = 20;
+    // 最小射击间隔下限，避免过快导致性能/手感问题（可按需微调）
+    private static final long MIN_SHOOT_INTERVAL_MS = 90;
+
     // 玩家飞机尺寸（和图片适配）
     private static final int PLAYER_WIDTH = 40;
     private static final int PLAYER_HEIGHT = 50;
@@ -146,6 +154,27 @@ public class PlayerAircraft extends Aircraft {
         fireLevel++;
     }
 
+    /**
+     * 增加速度：lv0 -> lv1 -> lv2 -> lv3
+     */
+    public void increaseSpeed() {
+        if (speedLevel >= MAX_SPEED_LEVEL) return;
+        speedLevel++;
+        this.speed = baseSpeed + speedLevel * SPEED_PER_LEVEL;
+    }
+
+    /**
+     * 增加射速：lv1 -> lv2 -> lv3
+     * 本项目射速由 shootInterval(ms) 控制：间隔越小射速越快。
+     */
+    public void increaseFireRate() {
+        if (fireRateLevel >= MAX_FIRE_RATE_LEVEL) return;
+        fireRateLevel++;
+
+        // 每级减少 20ms，并做下限保护
+        shootInterval = Math.max(MIN_SHOOT_INTERVAL_MS, shootInterval - FIRE_RATE_PER_LEVEL_MS);
+    }
+
     public int getFireLevel() {
         return fireLevel;
     }
@@ -154,13 +183,12 @@ public class PlayerAircraft extends Aircraft {
         return MAX_FIRE_LEVEL;
     }
 
-    /**
-     * 增加速度：lv0 -> lv1 -> lv2 -> lv3
-     */
-    public void increaseSpeed() {
-        if (speedLevel >= MAX_SPEED_LEVEL) return;
-        speedLevel++;
-        this.speed = baseSpeed + speedLevel * SPEED_PER_LEVEL;
+    public int getFireRateLevel() {
+        return fireRateLevel;
+    }
+
+    public int getMaxFireRateLevel() {
+        return MAX_FIRE_RATE_LEVEL;
     }
 
     public int getSpeedLevel() {

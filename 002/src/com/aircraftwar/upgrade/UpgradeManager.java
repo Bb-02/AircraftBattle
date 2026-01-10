@@ -54,6 +54,8 @@ public class UpgradeManager {
                 return p.getFireLevel() >= p.getMaxFireLevel();
             case SPEED:
                 return p.getSpeedLevel() >= p.getMaxSpeedLevel();
+            case FIRE_RATE:
+                return p.getFireRateLevel() >= p.getMaxFireRateLevel();
             default:
                 return true;
         }
@@ -120,6 +122,9 @@ public class UpgradeManager {
                 break;
             case SPEED:
                 p.increaseSpeed();
+                break;
+            case FIRE_RATE:
+                p.increaseFireRate();
                 break;
         }
 
