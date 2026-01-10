@@ -15,7 +15,11 @@ public class AudioUtil {
     private static final String EXPLODE_SOUND = "explode.wav";
     private static final String PLAYER_DEAD_SOUND = "player_dead.wav";
     private static final String GAME_OVER_SOUND = "game_over.wav";
-    private static final String BG_MUSIC = "bg_music.wav";
+    // 背景音乐：使用你提供的 Background.mp3（位于工程根 sounds/Background.mp3）
+    private static final String BG_MUSIC = "Background.wav";
+
+    // 菜单/非局内界面音乐（开始界面/排行榜/介绍界面等）
+    private static final String MENU_MUSIC = "Menu.wav";
 
     // 兼容旧 API：播放射击音效（玩家发射子弹）
     public static void playShootSound() {
@@ -40,6 +44,11 @@ public class AudioUtil {
     // 播放背景音乐（循环）
     public static void playBGM() {
         SoundManager.getInstance().playBgm(ResourceUtil.soundFile(BG_MUSIC).getPath(), true);
+    }
+
+    // 播放菜单音乐（循环）
+    public static void playMenuBGM() {
+        SoundManager.getInstance().playBgm(ResourceUtil.soundFile(MENU_MUSIC).getPath(), true);
     }
 
     // 停止背景音乐

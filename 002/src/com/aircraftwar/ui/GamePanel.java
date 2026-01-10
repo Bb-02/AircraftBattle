@@ -223,6 +223,8 @@ public class GamePanel extends JPanel implements Runnable {
         // 原先这里会直接 initGame() 并进入 GAME_RUNNING。
         // 现在改为：先进入开始界面，等待玩家按 R 开始。
         gameState = GAME_START;
+        // 开始界面播放菜单音乐
+        try { AudioUtil.playMenuBGM(); } catch (Exception ignored) {}
         score = 0;
         currentWaveNumber = 1;
         player = new PlayerAircraft(400 - 20, 500);
@@ -267,7 +269,7 @@ public class GamePanel extends JPanel implements Runnable {
         // 初始化第一波（无尽型）
         startNewWave();
 
-        // 播放背景音乐
+        // 切换到局内背景音乐
         AudioUtil.playBGM();
 
         // 确保面板重新获得键盘焦点（对话框关闭或其他窗口抢占焦点后仍能输入）
@@ -507,7 +509,8 @@ public class GamePanel extends JPanel implements Runnable {
         if (!player.isAlive() && gameState != GAME_OVER) {
             gameState = GAME_OVER;
             resetInputStates();
-            AudioUtil.stopBGM();
+            // 游戏结束：切回菜单音乐（排行榜/结算界面）
+            AudioUtil.playMenuBGM();
             AudioUtil.playGameOverSound();
 
             SwingUtilities.invokeLater(() -> {
@@ -1094,6 +1097,8 @@ public class GamePanel extends JPanel implements Runnable {
                     if (gameState == GAME_START) {
                         resetInputStates();
                         gameState = GAME_HELP;
+                        // 介绍界面也属于菜单类界面：确保菜单音乐在播
+                        try { AudioUtil.playMenuBGM(); } catch (Exception ignored) {}
                         repaint();
                     }
                     break;
@@ -1102,6 +1107,8 @@ public class GamePanel extends JPanel implements Runnable {
                     if (gameState == GAME_HELP) {
                         resetInputStates();
                         gameState = GAME_START;
+                        // 回到开始界面：菜单音乐
+                        try { AudioUtil.playMenuBGM(); } catch (Exception ignored) {}
                         repaint();
                     }
                     break;
@@ -1110,7 +1117,8 @@ public class GamePanel extends JPanel implements Runnable {
                     if (gameState == GAME_HELP) {
                         resetInputStates();
                         gameState = GAME_START;
-                        AudioUtil.stopBGM();
+                        // 回到开始界面：菜单音乐
+                        try { AudioUtil.playMenuBGM(); } catch (Exception ignored) {}
                         repaint();
                         break;
                     }
@@ -1119,8 +1127,8 @@ public class GamePanel extends JPanel implements Runnable {
                     if (gameState == GAME_OVER) {
                         resetInputStates();
                         gameState = GAME_START;
-                        // 回到开始界面不播放 BGM（你若希望菜单也有BGM可后续加）
-                        AudioUtil.stopBGM();
+                        // 回到开始界面：菜单音乐
+                        try { AudioUtil.playMenuBGM(); } catch (Exception ignored) {}
                         repaint();
                     }
                     break;
