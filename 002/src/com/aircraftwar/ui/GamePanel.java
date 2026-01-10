@@ -122,6 +122,15 @@ public class GamePanel extends JPanel implements Runnable {
         }
     }
 
+    // HUD/UI 侧显示用（避免直接暴露枚举）
+    private String getDifficultyDisplayName() {
+        return currentDifficulty != null ? currentDifficulty.getDisplayName() : "新手";
+    }
+
+    private Color getDifficultyDisplayColor() {
+        return currentDifficulty != null ? currentDifficulty.getColor() : Color.WHITE;
+    }
+
     // 将 UI Difficulty 映射为逻辑层 DifficultyKey（entity 包内的配置层）
     private com.aircraftwar.entity.DifficultyProfile.DifficultyKey getDifficultyProfileKey() {
         switch (currentDifficulty) {
@@ -928,14 +937,15 @@ public class GamePanel extends JPanel implements Runnable {
             g.drawString("历史最高分: " + ScoreUtil.getHighestScore(getDifficultyKey()), 20, 60);
             // 当前波次
             g.drawString("当前波次: " + currentWaveNumber, 20, 90);
-            // 剩余小队数
-            long aliveSquads = squads.stream().filter(s -> s.isSpawned() && !s.isAllDead()).count();
-            g.drawString("剩余小队数: " + aliveSquads + "/" + squads.size(), 20, 120);
-            // 波次剩余时间
-            long elapsedTime = System.currentTimeMillis() - currentWave.getStartTime();
-            long remainingTime = (currentWave.getDuration() - elapsedTime) / 1000;
-            if (remainingTime < 0) remainingTime = 0;
-            g.drawString("波次剩余时间: " + remainingTime + "s", 20, 150);
+
+            // 游戏难度（颜色跟开始界面一致）
+            String difficultyText = getDifficultyDisplayName();
+            Color difficultyColor = getDifficultyDisplayColor();
+            g.setColor(difficultyColor != null ? difficultyColor : Color.WHITE);
+            g.drawString("游戏难度: " + difficultyText, 20, 120);
+
+            // 画完难度后恢复默认颜色，避免影响后续 UI
+            g.setColor(Color.WHITE);
 
             // 玩家生命值（使用加粗中文字体）
             Font hpFont = chineseBoldFont != null ? chineseBoldFont.deriveFont(Font.BOLD, 20f) : new Font("微软雅黑", Font.BOLD, 20);
