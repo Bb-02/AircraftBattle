@@ -41,8 +41,6 @@ public class GamePanel extends JPanel implements Runnable {
     public static final int GAME_OVER = 2;
     // 新增：开始界面 -> 游戏的转场
     public static final int GAME_TRANSITION = 3;
-    // 新增：游戏介绍
-    public static final int GAME_HELP = 4;
 
     private int gameState = GAME_START;
 
@@ -706,8 +704,8 @@ public class GamePanel extends JPanel implements Runnable {
 
         // 开启文字抗锯齿，避免中文显示模糊
         g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-        // 背景：开始界面/转场/介绍界面统一用 Background2
-        boolean isStartLike = (gameState == GAME_START || gameState == GAME_TRANSITION || gameState == GAME_HELP);
+        // 背景：开始界面/转场统一用 Background2
+        boolean isStartLike = (gameState == GAME_START || gameState == GAME_TRANSITION);
         BufferedImage bg = isStartLike ? startBackgroundImage : backgroundImage;
 
         if (bg != null) {
@@ -795,84 +793,6 @@ public class GamePanel extends JPanel implements Runnable {
 
             // 开始界面/转场绘制完毕
             if (gameState != GAME_RUNNING) return;
-        }
-
-        if (gameState == GAME_HELP) {
-            // ===== 游戏介绍界面 =====
-            g2d.setColor(new Color(0, 0, 0, 170));
-            g2d.fillRect(0, 0, getWidth(), getHeight());
-
-            g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-
-            Font titleFont = chineseBoldFont != null ? chineseBoldFont.deriveFont(Font.BOLD, 46f) : new Font("微软雅黑", Font.BOLD, 46);
-            Font sectionFont = chineseBoldFont != null ? chineseBoldFont.deriveFont(Font.BOLD, 28f) : new Font("微软雅黑", Font.BOLD, 28);
-            Font itemFont = chineseFont != null ? chineseFont.deriveFont(Font.PLAIN, 22f) : new Font("微软雅黑", Font.PLAIN, 22);
-            Font tipFont = chineseFont != null ? chineseFont.deriveFont(Font.PLAIN, 18f) : new Font("微软雅黑", Font.PLAIN, 18);
-
-            String title = "游戏介绍";
-            g2d.setFont(titleFont);
-            FontMetrics fmTitle = g2d.getFontMetrics();
-            int titleX = (getWidth() - fmTitle.stringWidth(title)) / 2;
-            int titleY = 90;
-            g2d.setColor(Color.WHITE);
-            g2d.drawString(title, titleX, titleY);
-
-            // 难度介绍
-            g2d.setFont(sectionFont);
-            g2d.setColor(Color.WHITE);
-            String section = "难度介绍";
-            int secX = (getWidth() - g2d.getFontMetrics().stringWidth(section)) / 2;
-            int y = titleY + 80;
-            g2d.drawString(section, secX, y);
-
-            y += 40;
-
-            // 三档难度词条
-            int leftX = 110;
-            int rightX = getWidth() / 2 + 40;
-            int colY = y + 30;
-
-            // 新手
-            g2d.setFont(sectionFont);
-            g2d.setColor(Difficulty.NEWBIE.getColor());
-            g2d.drawString("新手", leftX, colY);
-            g2d.setFont(itemFont);
-            g2d.setColor(Color.WHITE);
-            int iy = colY + 34;
-            g2d.drawString("• 敌人轻微攻击欲望", leftX, iy);
-            g2d.drawString("• 正常敌机密度", leftX, iy + 30);
-            g2d.drawString("• 正常敌人频率", leftX, iy + 60);
-
-            // 老手
-            g2d.setFont(sectionFont);
-            g2d.setColor(Difficulty.VETERAN.getColor());
-            g2d.drawString("老手", rightX, colY);
-            g2d.setFont(itemFont);
-            g2d.setColor(Color.WHITE);
-            int jy = colY + 34;
-            g2d.drawString("• 敌人正常攻击欲望", rightX, jy);
-            g2d.drawString("• 敌人出现频率增加", rightX, jy + 30);
-
-            // 不可能
-            int thirdY = colY + 160;
-            g2d.setFont(sectionFont);
-            g2d.setColor(Difficulty.IMPOSSIBLE.getColor());
-            g2d.drawString("不可能", leftX, thirdY);
-            g2d.setFont(itemFont);
-            g2d.setColor(Color.WHITE);
-            int ky = thirdY + 34;
-            g2d.drawString("• 敌人强攻击欲望", leftX, ky);
-            g2d.drawString("• 弹幕压力大", leftX, ky + 30);
-            g2d.drawString("• 升级压力大", leftX, ky + 60);
-
-            // 底部提示
-            g2d.setFont(tipFont);
-            String back = "按 Q 或 ESC 返回开始界面";
-            int backX = (getWidth() - g2d.getFontMetrics().stringWidth(back)) / 2;
-            g2d.setColor(new Color(255, 255, 255, 220));
-            g2d.drawString(back, backX, getHeight() - 40);
-
-            return;
         }
 
         if (gameState == GAME_RUNNING) {
@@ -1093,35 +1013,19 @@ public class GamePanel extends JPanel implements Runnable {
                     }
                     break;
                 case KeyEvent.VK_Y:
-                    // 开始界面：进入游戏介绍
+                    // 开始界面：弹出“游戏介绍”窗口（可滚动）
                     if (gameState == GAME_START) {
                         resetInputStates();
-                        gameState = GAME_HELP;
-                        // 介绍界面也属于菜单类界面：确保菜单音乐在播
                         try { AudioUtil.playMenuBGM(); } catch (Exception ignored) {}
-                        repaint();
-                    }
-                    break;
-                case KeyEvent.VK_ESCAPE:
-                    // 介绍界面：返回
-                    if (gameState == GAME_HELP) {
-                        resetInputStates();
-                        gameState = GAME_START;
-                        // 回到开始界面：菜单音乐
-                        try { AudioUtil.playMenuBGM(); } catch (Exception ignored) {}
+                        Window owner = SwingUtilities.getWindowAncestor(GamePanel.this);
+                        HelpDialog dlg = new HelpDialog(owner);
+                        dlg.setVisible(true);
+                        // 关闭后回到开始界面，确保能继续接收按键
+                        requestFocusInWindow();
                         repaint();
                     }
                     break;
                 case KeyEvent.VK_Q:
-                    // 介绍界面：返回开始界面
-                    if (gameState == GAME_HELP) {
-                        resetInputStates();
-                        gameState = GAME_START;
-                        // 回到开始界面：菜单音乐
-                        try { AudioUtil.playMenuBGM(); } catch (Exception ignored) {}
-                        repaint();
-                        break;
-                    }
 
                     // 游戏结束界面：返回开始界面
                     if (gameState == GAME_OVER) {
