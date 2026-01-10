@@ -38,7 +38,12 @@ public class Wave {
         // 难度额外加压：不可能 -> 每波多 1~2 个小队（上限也更高）
         int maxSquads = 7;
         if (this.difficulty == com.aircraftwar.entity.DifficultyProfile.DifficultyKey.IMPOSSIBLE) {
-            squadCount += 2;
+            // ✅ 微调：开局（前2波）少一点，避免刚开始就太挤；后期仍然保持压迫感
+            if (waveNumber <= 2) {
+                squadCount += 1;
+            } else {
+                squadCount += 2;
+            }
             maxSquads = 9;
         }
         if (squadCount > maxSquads) squadCount = maxSquads;

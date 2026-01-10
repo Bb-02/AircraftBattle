@@ -7,6 +7,7 @@ import com.aircraftwar.util.ScoreUtil;
 import com.aircraftwar.event.EventBus;
 import com.aircraftwar.event.events.FireEvent;
 import com.aircraftwar.event.events.SoundEvent;
+import com.aircraftwar.util.GameConfig;
 
 import javax.imageio.ImageIO;
 import javax.swing.*;
@@ -136,7 +137,8 @@ public class GamePanel extends JPanel implements Runnable {
 
     public GamePanel() {
         // 初始化面板
-        setPreferredSize(new Dimension(800, 850));
+        // 统一屏幕尺寸到 GameConfig，避免硬编码 800/850
+        setPreferredSize(new Dimension(GameConfig.SCREEN_WIDTH, GameConfig.SCREEN_HEIGHT));
         setBackground(Color.BLACK);
 
         // ========== 核心修复1：初始化支持中文的字体 ==========

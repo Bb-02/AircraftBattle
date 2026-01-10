@@ -1,6 +1,7 @@
 package com.aircraftwar.entity;
 
 import com.aircraftwar.util.DrawUtil;
+import com.aircraftwar.util.GameConfig;
 
 import java.awt.*;
 
@@ -33,7 +34,7 @@ public class EnemyBullet implements IBullet {
     public void move() {
         y += speed;
         // 飞出屏幕则失效
-        if (y > 850) {
+        if (y > GameConfig.SCREEN_HEIGHT) {
             alive = false;
         }
     }

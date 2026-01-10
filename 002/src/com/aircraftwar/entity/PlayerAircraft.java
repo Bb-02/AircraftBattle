@@ -1,6 +1,7 @@
 package com.aircraftwar.entity;
 
 import com.aircraftwar.factory.ProjectileFactory;
+import com.aircraftwar.util.GameConfig;
 import com.aircraftwar.util.ImageUtil;
 
 import java.awt.*;
@@ -59,9 +60,9 @@ public class PlayerAircraft extends Aircraft {
 
     @Override
     public void move() {
-        // 边界检查兜底
-        x = Math.max(0, Math.min(800 - PLAYER_WIDTH, x));
-        y = Math.max(0, Math.min(600 - PLAYER_HEIGHT, y));
+        // 边界检查兜底（统一用 GameConfig，避免与面板尺寸不一致）
+        x = Math.max(0, Math.min(GameConfig.SCREEN_WIDTH - PLAYER_WIDTH, x));
+        y = Math.max(0, Math.min(GameConfig.SCREEN_HEIGHT - PLAYER_HEIGHT, y));
     }
 
     public void shoot() {
