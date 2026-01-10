@@ -15,7 +15,7 @@ public class AudioUtil {
     private static final String EXPLODE_SOUND = "explode.wav";
     private static final String PLAYER_DEAD_SOUND = "player_dead.wav";
     private static final String GAME_OVER_SOUND = "game_over.wav";
-    // 背景音乐：使用你提供的 Background.mp3（位于工程根 sounds/Background.mp3）
+    // 背景音乐：局内使用 Background.wav（位于工程根 sounds/Background.wav）
     private static final String BG_MUSIC = "Background.wav";
 
     // 菜单/非局内界面音乐（开始界面/排行榜/介绍界面等）
