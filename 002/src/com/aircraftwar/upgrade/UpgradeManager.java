@@ -20,9 +20,30 @@ public class UpgradeManager {
     // 当前局的难度（用于升级门槛倍率）
     private volatile DifficultyProfile.DifficultyKey difficulty = DifficultyProfile.DifficultyKey.NEWBIE;
 
-    // 升级触发：首次 300 分；之后门槛逐渐提高（温和二次增长）
-    private static final int FIRST_THRESHOLD = 300;
-    private static final int MAX_THRESHOLD_SCORE = 10_000; // 期望：1w 分前能把可升级项升满
+    // 升级触发：改为“渐进式手工曲线”（不再使用二次函数）
+    // 要求：
+    //  - 第1次升级：800
+    //  - 第2次升级：2000
+    //  - 第3次升级：3500 左右
+    //  - 之后逐渐增加，并在 15000 左右封顶
+    private static final int TARGET_FULL_UPGRADE_SCORE = 15_000;
+    private static final int MAX_THRESHOLD_SCORE = TARGET_FULL_UPGRADE_SCORE;
+
+    // 基础门槛表：index=已应用升级次数 appliedTimes
+    // appliedTimes=0 -> 800（第一次升级）
+    // appliedTimes=1 -> 2000（第二次升级）
+    // appliedTimes=2 -> 3500（第三次升级）
+    // 之后继续递增（可按手感微调）
+    private static final int[] THRESHOLDS = new int[] {
+            800,
+            2000,
+            3500,
+            5200,
+            7100,
+            9300,
+            11800,
+            14500
+    };
 
     private UpgradeManager() {
         EventBus.getDefault().subscribe(ScoreChangedEvent.class, this::onScoreChanged);
@@ -77,8 +98,16 @@ public class UpgradeManager {
     private int nextUpgradeScore(int appliedTimes) {
         int n = Math.max(0, appliedTimes);
 
-        // 二次：score = 300 + 700*n^2
-        int base = FIRST_THRESHOLD + 700 * n * n;
+        // 渐进式门槛：前几次用表，之后按“最后一段增量”继续推进，并在 15000 封顶
+        int base;
+        if (n < THRESHOLDS.length) {
+            base = THRESHOLDS[n];
+        } else {
+            int last = THRESHOLDS[THRESHOLDS.length - 1];
+            int prev = THRESHOLDS[THRESHOLDS.length - 2];
+            int delta = Math.max(800, last - prev); // 兜底增量，避免后期增长太慢
+            base = last + (n - (THRESHOLDS.length - 1)) * delta;
+        }
 
         // 难度倍率：不可能/老手更难升级
         double mult = DifficultyProfile.upgradeThresholdMultiplier(this.difficulty);
